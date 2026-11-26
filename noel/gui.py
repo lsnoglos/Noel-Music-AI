@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from .__main__ import ROOT, RUNTIME
 from .diagnostics import snapshot
+from .player import Player, envelope
 from .engine import Engine
 from .distribution import available, binary_path, install_engine
 from .models import MODELS, matches
@@ -22,9 +23,10 @@ from .studio import render, write_json
 
 class Studio:
     def __init__(self, window):
+        self.player = Player()
         self.w = window
         window.title("Noel Music AI")
-        window.geometry("800x620")
+        window.geometry("900x750")
         self.events = queue.Queue()
         self.cancel = threading.Event()
         self.busy = self.closing = False
@@ -47,7 +49,11 @@ class Studio:
         self.title = ttk.Entry(create)
         ttk.Label(create, text="Título").pack(anchor="w")
         self.title.pack(fill="x")
-        self.genre = self.combo(create, "Género", ["Balada acústica", "Pop latino", "Rock", "Salsa", "Salsa romántica", "Bachata", "Bachata romántica", "Merengue", "Cumbia", "Bolero", "Vallenato", "Reguetón", "Jazz", "Regional mexicano"])
+        self.genres = json.loads(Path(__file__).with_name("genres.json").read_text("utf-8"))
+        self.genre = self.combo(create, "Género", list(self.genres))
+        self.voice = self.combo(create, "Voz", ["Automática", "Femenina", "Masculina", "Dúo"])
+        self.setting = self.combo(create, "Ambiente", ["Libre", "Acústico", "Verano", "Íntimo", "Concierto"])
+        ttk.Label(create, text="Perfil rápido · Turbo Q8, 8 pasos").pack(anchor="w")
         ttk.Label(create, text="Describe cómo quieres que suene").pack(anchor="w")
         self.mood = self.combo(create, "Emoción", ["Natural", "Romántica", "Alegre", "Melancólica", "Enérgica"])
         self.prompt = ttk.Entry(create)
@@ -59,7 +65,19 @@ class Studio:
         self.button(create, "Generar canción", self.generate)
         self.history = tk.Listbox(library, height=14)
         self.history.pack(fill="both", expand=True)
+        self.waveform = tk.Canvas(library, height=55, bg="#19212e", highlightthickness=0)
+        self.waveform.pack(fill="x")
+        self.position = ttk.Progressbar(library)
+        self.position.pack(fill="x")
+        self.clock = ttk.Label(library)
+        self.clock.pack(anchor="w")
         self.button(library, "Reproducir", self.play)
+        self.button(library, "Pausar / continuar", self.pause)
+        self.button(library, "Detener", self.player.close)
+        self.volume = ttk.Scale(library, from_=0, to=1000, command=self.volume_changed)
+        self.volume.set(800)
+        self.volume.pack(anchor="w")
+        self.button(library, "Abrir carpeta", self.open_folder)
         self.button(library, "Guardar copia WAV", self.export)
         self.observed = ttk.Label(diag, wraplength=700)
         self.observed.pack(anchor="w")
@@ -134,6 +152,11 @@ class Studio:
                 if kind == "error" and not self.closing:
                     messagebox.showerror("Noel Music AI", text)
                 self.library()
+        if self.player.opened:
+            position = int(self.player.send("status noelplayer position"))
+            duration = int(self.player.send("status noelplayer length"))
+            self.position.configure(maximum=duration, value=position)
+            self.clock.configure(text=f"{position/1000:.1f} / {duration/1000:.1f} s")
         if self.closing and not self.busy:
             self.w.destroy()
             return
@@ -146,6 +169,7 @@ class Studio:
             self.run(lambda: install_engine(ROOT, asset, self.cancel, lambda n,total: self.events.put(("stage", f"Motor · {n/1e6:.1f}/{total/1e6:.1f} MB"))))
 
     def close(self):
+        self.player.close()
         self.closing = True
         self.cancel.set()
 
@@ -180,7 +204,30 @@ class Studio:
 
     def play(self):
         if self.history.curselection():
-            os.startfile(self.files[self.history.curselection()[0]])
+            wav = self.files[self.history.curselection()[0]]
+            try:
+                self.player.open(wav)
+                self.volume_changed(self.volume.get())
+                peaks = envelope(wav)
+                self.waveform.delete("all")
+                width = self.waveform.winfo_width() / len(peaks)
+                for i, peak in enumerate(peaks):
+                    self.waveform.create_line(i*width, 27-25*peak, i*width, 28+25*peak, fill="#53d4c0")
+            except OSError as error:
+                messagebox.showerror("Reproducción", str(error))
+
+    def open_folder(self):
+        if self.history.curselection():
+            os.startfile(self.files[self.history.curselection()[0]].parent)
+
+    def pause(self):
+        if self.player.opened:
+            mode = self.player.send("status noelplayer mode")
+            self.player.send(("pause" if mode == "playing" else "resume") + " noelplayer")
+
+    def volume_changed(self, value):
+        if self.player.opened:
+            self.player.send(f"setaudio noelplayer volume to {int(float(value))}")
 
     def export(self):
         if self.history.curselection():
@@ -225,7 +272,7 @@ class Studio:
 
     def generate(self):
         title = self.title.get().strip()
-        caption = " · ".join(filter(None, (self.genre.get(), self.mood.get(), self.prompt.get().strip())))
+        caption = " · ".join(filter(None, (self.genres[self.genre.get()], self.mood.get(), self.setting.get(), self.voice.get(), self.prompt.get().strip())))
         lyrics = self.lyrics.get("1.0", "end").strip()
         seconds = int(self.seconds.get())
         def work():

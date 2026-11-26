@@ -1,3 +1,4 @@
+param([switch]$SmokeMissingPython)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -89,6 +90,7 @@ $form.Add_FormClosing({
     }
 })
 $form.Add_Shown({
+    if ($SmokeMissingPython) { $form.BeginInvoke([Action]{$form.Close()}); return }
     $exe = Check $private @()
     if (-not $exe) { $exe = Check (Get-Command py.exe -ErrorAction SilentlyContinue).Source @('-3') }
     if (-not $exe) { $exe = Check (Get-Command python.exe -ErrorAction SilentlyContinue).Source @() }
