@@ -24,5 +24,5 @@ if (Test-Path (Join-Path $src "CMakeLists.txt")) {
 }
 Run git @("-C", $src, "checkout", "--detach", $rev)
 Run git @("-C", $src, "submodule", "update", "--init", "--recursive")
-Run cmake @("-S", $src, "-B", $build, "-G", "Ninja Multi-Config", "-DGGML_CUDA=ON", "-DCMAKE_CUDA_ARCHITECTURES=86")
-Run cmake @("--build", $build, "--config", "Release", "--target", "ace-server", "--parallel", "2")
+Run cmake @("-S", $src, "-B", $build, "-G", "Ninja Multi-Config", "-DGGML_CUDA=ON", "-DGGML_BACKEND_DL=ON", "-DGGML_NATIVE=OFF", "-DCMAKE_CUDA_ARCHITECTURES=86")
+Run cmake @("--build", $build, "--config", "Release", "--target", "ace-server", "ggml-cpu", "ggml-cuda", "--parallel", "2")
