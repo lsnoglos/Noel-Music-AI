@@ -1,0 +1,3 @@
+# ADR 0001 · Motor externo y síntesis directa
+
+Decisión para la primera prueba: proceso C++ separado, GGUF Turbo Q8, sin bifurcación ni LM. Esto permite comprobar versión, aislar el contexto CUDA y guardar el contrato HTTP real con una instalación pequeña. El coste es transferir y mantener brevemente una copia de WAV y latentes. La prueba de 120 s cabe en el límite de respuesta de 40 MiB a 48 kHz estéreo PCM16. Comparar coste de transporte, memoria, duración y escucha antes de decidir si integrar la biblioteca directamente. Si falla Q8 por memoria, evaluar Q5 con otro manifiesto y nueva serie de referencia.
