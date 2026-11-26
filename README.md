@@ -6,7 +6,7 @@ Estudio local de música para Windows x64. Esta primera entrega conecta una inte
 
 Descargue el ZIP portable en [Releases](https://github.com/lsnoglos/Noel-Music-AI/releases) cuando haya una compilación publicada. Las compilaciones de prueba también se distribuyen desde [Actions](https://github.com/lsnoglos/Noel-Music-AI/actions/workflows/windows-cuda.yml). Extraiga el ZIP completo y abra **NoelMusicAI.cmd**. El asistente comprueba Python x64 y permite instalar el entorno en la carpeta privada del proyecto.
 
-Abra **Modelos y descargas** y verifique los tres componentes básicos (hasta 3.67 GB). Si utiliza el ZIP de código fuente, el botón de instalación busca un motor compatible en las versiones publicadas. En **Crear música**, elija un género, escriba su letra y pruebe primero 15 segundos. **Biblioteca** permite reproducir la canción y guardar una copia WAV.
+Abra **Modelos** y verifique los tres componentes básicos (hasta 3.67 GB). Si utiliza el ZIP de código fuente, el botón de instalación busca un motor compatible en las versiones publicadas. En **Crear música**, elija un género, escriba su letra y pruebe primero 15 segundos. **Biblioteca** permite reproducir la canción y guardar una copia WAV.
 
 ## Uso por consola
 

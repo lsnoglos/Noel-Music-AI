@@ -10,10 +10,10 @@ import threading
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .__main__ import ROOT, RUNTIME
-from .diagnostics import snapshot
+from .diagnostics import PeakMonitor, snapshot
 from .player import Player, envelope
 from .engine import Engine
 from .distribution import available, binary_path, install_engine
@@ -40,11 +40,30 @@ class Studio:
         self.style = ttk.Style(window)
         self.style.theme_use("clam")
         self.theme("Oscuro")
-        notebook = ttk.Notebook(window)
-        notebook.pack(fill="both", expand=True, padx=16, pady=16)
-        create, library, setup, settings, diag = [ttk.Frame(notebook, padding=18) for _ in range(5)]
-        for panel, name in zip((create, library, setup, settings, diag), ("Crear música", "Biblioteca", "Modelos y descargas", "Configuración", "Diagnóstico")):
-            notebook.add(panel, text=name)
+        body = ttk.Frame(window)
+        body.pack(fill="both", expand=True)
+        sidebar = ttk.Frame(body, padding=12)
+        sidebar.pack(side="left", fill="y")
+        ttk.Label(sidebar, text="♫  Noel Music AI", font=("Segoe UI", 15, "bold")).pack(pady=12)
+        content = ttk.Frame(body)
+        content.pack(side="left", fill="both", expand=True)
+        content.columnconfigure(0, weight=1)
+        content.rowconfigure(0, weight=1)
+        home, create, library, setup, downloads, settings, diag = [ttk.Frame(content, padding=18) for _ in range(7)]
+        for panel, name in zip((home, create, library, setup, downloads, settings, diag),
+                               ("Inicio", "Crear música", "Biblioteca", "Modelos", "Descargas", "Configuración", "Diagnóstico")):
+            panel.grid(row=0, column=0, sticky="nsew")
+            self.button(sidebar, name, panel.tkraise)
+        ttk.Label(home, text="Estudio musical local", font=("Segoe UI", 24)).pack(anchor="w")
+        ttk.Label(home, text="Para tu primera canción, instala el motor y los tres modelos básicos.").pack(anchor="w", pady=12)
+        self.button(home, "Instalar componentes faltantes", setup.tkraise)
+        self.button(home, "Crear música", create.tkraise)
+        ttk.Label(home, text="En desarrollo · cambiar letra, crear con una voz, transformar ritmo y mejorar canción.", wraplength=520).pack(anchor="w", pady=24)
+        ttk.Label(downloads, text="Descargas", font=("Segoe UI", 20)).pack(anchor="w")
+        ttk.Label(downloads, textvariable=self.status, wraplength=450).pack(anchor="w")
+        self.button(downloads, "Cancelar descarga", self.cancel.set)
+        self.button(downloads, "Seleccionar y reanudar modelos", setup.tkraise)
+        home.tkraise()
         ttk.Label(create, text="Nueva canción", font=("Segoe UI", 22)).pack(anchor="w")
         self.title = ttk.Entry(create)
         ttk.Label(create, text="Título").pack(anchor="w")
@@ -77,10 +96,15 @@ class Studio:
         self.volume = ttk.Scale(library, from_=0, to=1000, command=self.volume_changed)
         self.volume.set(800)
         self.volume.pack(anchor="w")
-        self.button(library, "Abrir carpeta", self.open_folder)
+        controls = ttk.Frame(library)
+        controls.pack(anchor="w")
+        for text, fn in [("Renombrar", lambda: self.edit_song(False)), ("Favorita", lambda: self.edit_song(True)), ("Abrir carpeta", self.open_folder)]:
+            ttk.Button(controls, text=text, command=fn).pack(side="left")
         self.button(library, "Guardar copia WAV", self.export)
         self.observed = ttk.Label(diag, wraplength=700)
         self.observed.pack(anchor="w")
+        ttk.Label(setup, text="Paquete básico · Turbo Q8", font=("Segoe UI", 18)).pack(anchor="w")
+        ttk.Label(setup, text="ACE-Step 1.5 · licencia de la colección MIT · rendimiento pendiente de benchmark").pack(anchor="w")
         self.button(setup, "Buscar e instalar el motor Windows", self.find_release)
         self.button(settings, "Alternar tema claro / oscuro", lambda: self.theme("Claro" if self.dark else "Oscuro"))
         self.selected = {}
@@ -104,6 +128,8 @@ class Studio:
         self.dark = name == "Oscuro"
         bg, fg = ("#19212e", "#eef2ff") if self.dark else ("#f3f5fa", "#182233")
         self.style.configure(".", background=bg, foreground=fg, fieldbackground=bg, font=("Segoe UI", 10))
+        self.style.configure("TCombobox", fieldbackground=bg, foreground=fg)
+        self.style.map("TCombobox", fieldbackground=[("readonly", bg)], foreground=[("readonly", fg)])
         self.style.map("TButton", background=[("active", "#485a79")])
         self.w.configure(background=bg)
 
@@ -194,7 +220,8 @@ class Studio:
                 if wav.exists():
                     title_file = manifest.with_name("display.json")
                     if title_file.exists():
-                        data["request"]["caption"] = json.loads(title_file.read_text("utf-8"))["title"]
+                        display = json.loads(title_file.read_text("utf-8"))
+                        data["request"]["caption"] = ("★ " if display.get("favorite") else "") + display.get("title", data["request"]["caption"])
                     self.history.insert("end", f"{data['request']['caption']} · {data['metrics']['actual_seconds']:.1f} s")
                     self.files.append(wav)
             except (OSError, ValueError, KeyError):
@@ -215,6 +242,20 @@ class Studio:
                     self.waveform.create_line(i*width, 27-25*peak, i*width, 28+25*peak, fill="#53d4c0")
             except OSError as error:
                 messagebox.showerror("Reproducción", str(error))
+
+    def edit_song(self, favorite):
+        if self.history.curselection():
+            f = self.files[self.history.curselection()[0]].with_name("display.json")
+            data = json.loads(f.read_text("utf-8")) if f.exists() else {}
+            if favorite:
+                data["favorite"] = not data.get("favorite", False)
+            else:
+                title = simpledialog.askstring("Renombrar", "Título de la canción")
+                if not title:
+                    return
+                data["title"] = title
+            write_json(f, data)
+            self.library()
 
     def open_folder(self):
         if self.history.curselection():
@@ -249,6 +290,7 @@ class Studio:
             gpu = info["gpu"] or {}
             rows = [f"{info['os']} {info['architecture']} · Python {sys.version.split()[0]}",
                     f"{gpu.get('name', 'GPU no detectada')} · controlador {gpu.get('driver','—')} · VRAM libre {gpu.get('free_mib','—')} MiB",
+                    f"RAM libre: {(info['ram_available'] or 0)/2**30:.2f} GiB · Disco libre: {info['disk_free']/2**30:.1f} GiB",
                     f"Motor musical: {'presente' if self.binary().exists() else 'falta · descargue el paquete Windows de GitHub Actions'}"]
             for name, size, digest in MODELS.values():
                 state = "verificado" if matches(self.models/name, size, digest) else "falta o requiere reparación"
@@ -312,7 +354,11 @@ class Studio:
                     else:
                         raise TimeoutError("El motor no respondió.")
                     self.events.put(("stage", "Generando música"))
-                    result = render(engine, props, self.runs, caption, lyrics, seconds, 42)
+                    with PeakMonitor() as monitor:
+                        result = render(engine, props, self.runs, caption, lyrics, seconds, 42)
+                    write_json(self.runs/result["version"]/"performance.json",
+                               dict(peak_system_vram_mib=monitor.peak_gpu_mib, peak_system_ram_bytes=monitor.peak_ram_bytes,
+                                    total_seconds=result["total_s"], generated_seconds=result["actual_seconds"]))
                     if title:
                         write_json(self.runs/result["version"]/"display.json", {"title": title})
                     return "Canción guardada · " + result["version"]

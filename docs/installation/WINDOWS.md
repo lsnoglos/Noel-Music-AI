@@ -27,3 +27,5 @@ Esta distribución inicial compila desde fuentes. Reserve espacio para el compil
 
 ## Instalación de usuario
 Abra el ZIP portable del workflow, extraiga NoelMusicAI-Windows.zip y ejecute NoelMusicAI.cmd. El paquete incluye engine y engine-manifest.json. Use el asistente de Python cuando se lo solicite. Si una descarga de modelos falla, vuelva a seleccionar los archivos y pulse verificar e instalar. El diagnóstico del escritorio exporta un JSON sin letras ni canciones. Si falla la generación, revise .runtime/engine.log. Los pasos de compilación de este documento se destinan a desarrolladores.
+
+En la biblioteca, Reproducir abre el WAV en el reproductor integrado de Windows MCI. Los picos de la forma de onda se calculan con las muestras guardadas.
