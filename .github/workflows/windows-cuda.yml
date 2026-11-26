@@ -1,0 +1,34 @@
+name: Noel Music AI portable
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, feature/portable-studio]
+    paths: ['.github/workflows/windows-cuda.yml', 'scripts/**', 'noel/**', 'NoelMusicAI.cmd']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: ilammy/msvc-dev-cmd@a102174a2b586eec2ea151a69e6fd14404a8ce7c
+        with:
+          arch: x64
+      - uses: Jimver/cuda-toolkit@c35baa1a18fd1fc9dcf47c5bd839bf30559c0bc3
+        with:
+          cuda: '12.8.1'
+          method: network
+      - name: Build pinned SM86 server
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - name: Package and verify
+        shell: pwsh
+        run: ./scripts/package.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: NoelMusicAI-Windows-x64
+          path: |
+            NoelMusicAI-Windows.zip
+            NoelMusicAI-Windows.zip.sha256
+          if-no-files-found: error
