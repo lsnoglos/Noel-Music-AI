@@ -2,7 +2,13 @@
 
 Estudio local de música para Windows x64. Esta primera entrega conecta una interfaz de comandos en español con ACE-Step C++ y guarda cada interpretación como una versión independiente. La prueba objetivo es una RTX 3070 Laptop de 8 GB con 16 GB de RAM.
 
-## Primera canción
+## Abrir en Windows
+
+Descargue el ZIP portable en [Releases](https://github.com/lsnoglos/Noel-Music-AI/releases) cuando haya una compilación publicada. Las compilaciones de prueba también se distribuyen desde [Actions](https://github.com/lsnoglos/Noel-Music-AI/actions/workflows/windows-cuda.yml). Extraiga el ZIP completo y abra **NoelMusicAI.cmd**. El asistente comprueba Python x64 y permite instalar el entorno en la carpeta privada del proyecto.
+
+Abra **Modelos y descargas** y verifique los tres componentes básicos (hasta 3.67 GB). Si utiliza el ZIP de código fuente, el botón de instalación busca un motor compatible en las versiones publicadas. En **Crear música**, elija un género, escriba su letra y pruebe primero 15 segundos. **Biblioteca** permite reproducir la canción y guardar una copia WAV.
+
+## Uso por consola
 
 1. Siga la [instalación para Windows](docs/installation/WINDOWS.md) para compilar el motor CUDA y verificar los tres modelos.
 2. Abra el motor con `NoelMusicAI.cmd start` y mantenga abierta su consola.

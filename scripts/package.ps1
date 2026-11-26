@@ -32,5 +32,6 @@ python -m unittest discover -v
 if ($LASTEXITCODE) { throw 'Unit tests failed' }
 python -m tests.server_contract (Resolve-Path "$dest/ace-server.exe")
 if ($LASTEXITCODE) { throw 'Server contract failed' }
+(git -C .runtime/acestep.cpp rev-parse HEAD) | Set-Content portable/engine-revision.txt -Encoding utf8
 Compress-Archive portable/* NoelMusicAI-Windows.zip
 (Get-FileHash NoelMusicAI-Windows.zip).Hash | Set-Content NoelMusicAI-Windows.zip.sha256

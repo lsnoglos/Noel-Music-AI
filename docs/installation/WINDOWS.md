@@ -24,3 +24,6 @@ Esta distribución inicial compila desde fuentes. Reserve espacio para el compil
 - **El motor rechaza una versión o un modelo**. Use el binario construido por este proyecto y los pesos del manifiesto. Vuelva a ejecutar models --download para verificar la instalación.
 - **Memoria insuficiente o trabajo fallido**. Guarde el mensaje de la consola del motor, cierre aplicaciones que usen GPU y repita primero con 15 segundos. El estado health solo acredita conectividad e inventario.
 - **Detener y conservar proyectos**. Ctrl+C en el cliente solicita cancelar. Ctrl+C en la consola del servidor lo detiene. Para retirar la instalación, conserve runs y cualquier salida personalizada y retire únicamente la carpeta de instalación que creó. Las dependencias compartidas se administran aparte.
+
+## Instalación de usuario
+Abra el ZIP portable del workflow, extraiga NoelMusicAI-Windows.zip y ejecute NoelMusicAI.cmd. El paquete incluye engine y engine-manifest.json. Use el asistente de Python cuando se lo solicite. Si una descarga de modelos falla, vuelva a seleccionar los archivos y pulse verificar e instalar. El diagnóstico del escritorio exporta un JSON sin letras ni canciones. Si falla la generación, revise .runtime/engine.log. Los pasos de compilación de este documento se destinan a desarrolladores.

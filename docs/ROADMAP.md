@@ -9,3 +9,5 @@
 | 6–7 | Consentimiento, conversión cantada, fonemas en español, síntesis y edición por frase. Escucha con referencias autorizadas. |
 | 8 | Aprobación inmutable, masterización reversible, refinamiento derivado y exportación WAV/FLAC/MP3. |
 | 9–10 | Perfilado, ejecuciones consecutivas, portable, reparación, actualización, instalador y release en Windows. |
+
+Etapa de escritorio iniciada. Validar doble clic en Windows limpio, flujo offline y duraciones de 15 a 120 segundos antes de publicar una versión estable.
