@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .diagnostics import snapshot
 from .engine import Engine
+from .distribution import binary_path
 from .models import MODELS, install, matches
 from .studio import benchmark, render
 
@@ -20,10 +21,13 @@ def main():
     parser.add_argument("--models-dir", type=Path, default=RUNTIME / "models")
     parser.add_argument("--output", type=Path, default=ROOT / "runs")
     cmds = parser.add_subparsers(dest="cmd", required=True)
-    cmds.add_parser("models").add_argument("--download", action="store_true")
+    models = cmds.add_parser("models")
+    models.add_argument("--select", choices=list(MODELS), action="append")
+    models.add_argument("--repair", action="store_true")
+    models.add_argument("--download", action="store_true")
     cmds.add_parser("diagnose")
     cmds.add_parser("health")
-    cmds.add_parser("start").add_argument("--binary", type=Path, default=RUNTIME / "build/Release/ace-server.exe")
+    cmds.add_parser("start").add_argument("--binary", type=Path, default=binary_path(ROOT))
     gen = cmds.add_parser("generate")
     gen.add_argument("caption")
     gen.add_argument("--lyrics", default="")
@@ -34,7 +38,7 @@ def main():
     if not 1 <= args.port <= 65535:
         parser.error("Puerto fuera de rango")
     if args.cmd == "models":
-        return install(args.models_dir, args.download)
+        return install(args.models_dir, args.download, args.select, args.repair)
     if args.cmd == "diagnose":
         print(json.dumps(snapshot(), indent=2))
         return

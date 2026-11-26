@@ -16,3 +16,6 @@ La CLI llama a un adaptador Python de biblioteca estándar. Un proceso ace-serve
 El orquestador comprueba la duración, el formato, la longitud real de muestras y la pareja de latentes antes de publicar la versión. Escribe en una carpeta temporal del mismo volumen y la renombra. Un error conserva las versiones anteriores. El manifiesto registra parámetros, revisión de pesos, modelos declarados, hashes y procedencia IA. El catálogo SQLite con migraciones se incorporará con la gestión de proyectos de escritorio.
 
 Contratos posteriores: separación devuelve stems alineados; análisis devuelve atributos con confianza; alineación devuelve intervalos editables; síntesis recibe notas/fonemas; conversión recibe interpretación y referencia autorizada; masterización recibe un WAV y crea una versión derivada. Cada adaptador requerirá validación independiente antes de habilitar su función.
+
+## Escritorio Windows
+WinForms arranca sin Python. Tk utiliza la biblioteca estándar para evitar descargas de un framework gráfico. Los trabajos de red y GPU se ejecutan en un hilo separado. El proceso de síntesis usa loopback y un puerto libre. Cada generación posee y cierra su proceso. Los motores reparados se instalan en directorios independientes con un puntero actualizado al final.

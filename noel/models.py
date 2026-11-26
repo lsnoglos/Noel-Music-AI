@@ -2,6 +2,7 @@
 import hashlib
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 REVISION = "83f32e465c3abd605271d0c1c935ad2faf28c197"
@@ -20,7 +21,7 @@ def matches(path, size, digest):
         return hashlib.file_digest(stream, "sha256").hexdigest() == digest
 
 
-def install(directory: Path, approved: bool):
+def install(directory: Path, approved: bool, selected=None, repair=False, cancel=None, progress=None):
     print("Modelos de Serveurperso/ACE-Step-1.5-GGUF:")
     for name, size, _ in MODELS.values():
         print(f"  {name}   {size:,} bytes")
@@ -31,23 +32,38 @@ def install(directory: Path, approved: bool):
     lock = directory / ".installing"
     lock.touch(exist_ok=False)
     try:
-        for name, size, digest in MODELS.values():
+        for key in (MODELS if selected is None else selected):
+            name, size, digest = MODELS[key]
             dest = directory / name
             if dest.exists():
-                if not matches(dest, size, digest):
+                if matches(dest, size, digest):
+                    continue
+                if not repair:
                     raise ValueError(f"Modelo existente incorrecto. Mueva {dest} y reintente.")
-                continue
             part = dest.with_suffix(".gguf.part")
             offset = part.stat().st_size if part.exists() else 0
             if shutil.disk_usage(directory).free < size - offset:
                 raise ValueError("Espacio insuficiente para " + name)
             if offset < size:
-                subprocess.run(["curl", "--fail", "--location", "--proto", "=https",
+                args = ["curl", "--fail", "--location", "--proto", "=https",
                                 "--proto-redir", "=https", "--retry", "2", "--continue-at", "-",
-                                "--output", str(part), f"{BASE}/{name}"], check=True)
+                                "--output", str(part), f"{BASE}/{name}"]
+                if cancel is None:
+                    subprocess.run(args, check=True)
+                else:
+                    with subprocess.Popen(args) as proc:
+                        while proc.poll() is None:
+                            if cancel.is_set():
+                                proc.terminate()
+                                raise InterruptedError("Descarga cancelada. Puede reanudarla.")
+                            if progress:
+                                progress(name, part.stat().st_size if part.exists() else 0, size)
+                            time.sleep(.3)
+                        if proc.returncode:
+                            raise ValueError(f"Descarga fallida: {name}")
             if not matches(part, size, digest):
                 part.unlink()
                 raise ValueError(f"Integridad incorrecta para {name}. Repita la descarga.")
-            part.rename(dest)
+            part.replace(dest)
     finally:
         lock.unlink()

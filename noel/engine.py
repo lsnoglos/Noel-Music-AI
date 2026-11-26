@@ -44,7 +44,8 @@ def unpack(content_type, data, seconds):
 
 
 class Engine:
-    def __init__(self, port=8085):
+    def __init__(self, port=8085, cancelled=None):
+        self.cancelled = cancelled
         self.port = port
 
     def request(self, method, path, body=None):
@@ -87,6 +88,8 @@ class Engine:
         end = time.monotonic() + timeout
         try:
             while time.monotonic() < end:
+                if self.cancelled and self.cancelled.is_set():
+                    raise InterruptedError("Cancelación solicitada.")
                 status = self.metadata("GET", path)["status"]
                 if status == "done":
                     return unpack(*self.request("GET", path + "&result=1"), payload["duration"])

@@ -9,3 +9,5 @@ Fase 1, integración de desarrollo. La base de arquitectura está en 1eaf85d. El
 **Pendiente indispensable**: compilar en Windows y medir una generación real con pesos en la RTX 3070 Laptop. Sigue abierta la validación de escucha, tiempo, memoria, estabilidad y cancelación durante un kernel real. El ajuste VAE es experimental. El ejecutable portable de escritorio, conversión vocal, sustitución de letra, banco español y demás fases están en docs/ROADMAP.md.
 
 **Siguiente tarea**: ejecutar el protocolo de 15/30/60/120 s, conservar logs y resultados y decidir el perfil predeterminado a partir de evidencia de la máquina objetivo.
+
+Etapa 2 en desarrollo. Bootstrapper WinForms, GUI Tk, instalación selectiva, reparación de modelos, control de proceso y biblioteca implementados. La publicación preview requiere que el workflow Windows compile y valide el paquete. Pendientes escucha y mediciones CUDA en la RTX 3070.
