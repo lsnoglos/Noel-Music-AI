@@ -7,6 +7,10 @@ $dirs = @($source.Path, "$env:CUDA_PATH/bin", $crt.FullName)
 Copy-Item "$source/ace-server.exe" $dest
 $queue = [Collections.Generic.Queue[string]]::new()
 $queue.Enqueue('ace-server.exe')
+foreach ($module in @('ggml-cpu.dll','ggml-cuda.dll')) {
+    Copy-Item "$source/$module" $dest
+    $queue.Enqueue($module)
+}
 while ($queue.Count) {
     $file = $queue.Dequeue()
     $deps = & dumpbin /nologo /dependents "$dest/$file"

@@ -31,7 +31,7 @@ def check(binary):
             client = Engine(port)
             for _ in range(100):
                 if proc.poll() is not None:
-                    raise RuntimeError("ace-server cerró durante el inicio")
+                    raise RuntimeError(f"ace-server cerró durante el inicio: 0x{proc.returncode & 0xffffffff:08X}")
                 try:
                     props = client.ready()
                     break
