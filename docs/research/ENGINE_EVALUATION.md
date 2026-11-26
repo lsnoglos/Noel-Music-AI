@@ -36,3 +36,10 @@ Se inspeccionaron árboles, licencias y documentación de cada revisión. La sel
 | [FFmpeg](https://github.com/FFmpeg/FFmpeg/tree/625234b) | LGPL/GPL según configuración | DSP y exportación posteriores. Inventariar flags y codecs del binario distribuido. |
 
 Fuentes de los archivos GGUF: [punteros LFS con tamaños y hashes](https://huggingface.co/Serveurperso/ACE-Step-1.5-GGUF/commit/83f32e465c3abd605271d0c1c935ad2faf28c197). Las licencias citadas para repositorios de código no sustituyen la revisión de cada checkpoint.
+
+
+## Evaluación del binario Windows del autor
+
+El índice público de Serveurperso ofrece ace-server.exe, ggml-base.dll, implementaciones CPU, ggml-cuda.dll y ggml-vulkan.dll. El ejecutable inspeccionado contiene la cadena de compilación `973517b (2026-11-17)` y la ruta `/synth`. El índice por sí solo no identifica la arquitectura CUDA ni proporciona un manifiesto autenticado que vincule cada DLL con ese ejecutable. La distribución de Noel usa una compilación propia de la revisión completa y comprueba el contrato antes de empaquetar el resultado.
+
+[Directorio de binarios del autor](https://www.serveurperso.com/temp/acestep.cpp-win64/build/Release/)
