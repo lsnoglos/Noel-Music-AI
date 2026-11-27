@@ -34,6 +34,7 @@ def main():
     gen.add_argument("--seconds", type=int, default=15)
     gen.add_argument("--seed", type=int, default=42)
     gen.add_argument("--model", choices=("dit", "sft"), default="dit")
+    gen.add_argument("--language", choices=("es", "en", "pt", "fr", "it", "de", "ja"), default="es")
     cmds.add_parser("benchmark").add_argument("--repeat", type=int, choices=range(1, 11), default=1)
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
@@ -62,7 +63,7 @@ def main():
     elif args.cmd == "benchmark":
         benchmark(engine, props, args.output, args.repeat)
     else:
-        result = render(engine, props, args.output, args.caption, args.lyrics, args.seconds, args.seed, args.model)
+        result = render(engine, props, args.output, args.caption, args.lyrics, args.seconds, args.seed, args.model, args.language)
         print(args.output / result["version"] / "song.wav")
 
 

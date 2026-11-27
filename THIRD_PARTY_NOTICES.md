@@ -15,3 +15,5 @@ El bootstrapper utiliza PowerShell y WinForms del sistema. Python 3.14.10 x64 se
 - ttkbootstrap 2.2.7 (MIT): https://pypi.org/project/ttkbootstrap/2.2.7/
 - Pillow 12.2.0 (HPND): https://pypi.org/project/pillow/12.2.0/
   Las ruedas redistribuidas incluyen sus metadatos y avisos de licencia.
+
+- lameenc 1.9.0 (LGPL-3.0-or-later), bindings LAME: https://pypi.org/project/lameenc/1.9.0/ ; código fuente https://github.com/chrisstaite/lameenc ; LAME https://lame.sourceforge.io/ . La rueda conserva metadatos y avisos; no se modifica la biblioteca. La dependencia se carga separadamente para exportar MP3.

@@ -17,7 +17,7 @@ def write_json(path, data):
     temp.replace(path)
 
 
-def render(engine, props, root, caption, lyrics, seconds, seed, model="dit"):
+def render(engine, props, root, caption, lyrics, seconds, seed, model="dit", language="es"):
     if not caption.strip() or len(caption) > 8000 or len(lyrics) > 16000:
         raise ValueError("Revise la descripción y la extensión de la letra.")
     if not 1 <= seconds <= 300 or not 0 <= seed < 2**31:
@@ -28,7 +28,7 @@ def render(engine, props, root, caption, lyrics, seconds, seed, model="dit"):
     steps = 8 if model == "dit" else 50
     if model != "dit" and name not in props.get("models", {}).get("dit", []):
         raise ValueError("Instale el modelo SFT antes de seleccionarlo.")
-    payload = dict(caption=caption, lyrics=lyrics or "[Instrumental]", vocal_language="es" if lyrics else "unknown",
+    payload = dict(caption=caption, lyrics=lyrics or "[Instrumental]", vocal_language=language if lyrics else "unknown",
                    duration=seconds, seed=seed, task_type="text2music", output_format="wav16",
                    inference_steps=steps, synth_batch_size=1, synth_model=name, vae=MODELS["vae"][0])
     root.mkdir(parents=True, exist_ok=True)
