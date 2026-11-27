@@ -45,7 +45,6 @@ class Studio:
         self.song_data = []
         self.model_buttons = {}
         self.composing = False
-        self.tip_refs = []
         RUNTIME.mkdir(exist_ok=True)
         self.config = RUNTIME / "studio.json"
         self.paths = json.loads(self.config.read_text("utf-8")) if self.config.exists() else {}
@@ -84,6 +83,8 @@ class Studio:
         self.home_scroll = ScrollFrame(home)
         self.home_scroll.pack(fill="both", expand=True)
         self.home_cards = self.home_scroll.inner
+        self.card_columns = 2
+        self.home_scroll.canvas.bind("<Configure>", self.resize_cards, add="+")
         self.home_history = tk.Listbox(home, exportselection=False)  # internal selection, not a visible list
 
         ttk.Label(create, text="Crear música", font=("Segoe UI", 22, "bold")).pack(anchor="w")
@@ -92,7 +93,7 @@ class Studio:
         split.columnconfigure(0, weight=3)
         split.columnconfigure(1, weight=2)
         split.rowconfigure(0, weight=1)
-        form_scroll = ScrollFrame(split)
+        form_scroll = self.form_scroll = ScrollFrame(split)
         form_scroll.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         form = form_scroll.inner
         self.results_container = ttk.Frame(split, padding=(8, 0))
@@ -349,6 +350,9 @@ class Studio:
             self.lyrics.configure(insertbackground=fg)
         if hasattr(self, "topic"):
             self.topic.configure(background=bg, foreground=fg, insertbackground=fg)
+        for scroll in (getattr(self, "home_scroll", None), getattr(self, "form_scroll", None), getattr(self, "composer", None)):
+            if scroll:
+                scroll.canvas.configure(background=bg)
         if hasattr(self, "song_data") and hasattr(self, "home_cards"):
             self.draw_cards()
 
@@ -446,7 +450,10 @@ class Studio:
                 self.compose_button.state(["!disabled"])
                 self.status.set(text)
                 if kind == "error" and not self.closing:
-                    messagebox.showerror("Noel Music AI", text)
+                    if self.action == "Composición":
+                        self.lyric_notice.configure(text=text)
+                    else:
+                        messagebox.showerror("Noel Music AI", text)
                 self.library()
                 if kind == "done" and not self.closing and self.action in ("Instalación de modelos", "Instalación del motor"):
                     self.inspect()
@@ -562,8 +569,14 @@ class Studio:
 
     def pause(self):
         if self.player.opened:
-            mode = self.player.send("status noelplayer mode")
-            self.player.send(("pause" if mode == "playing" else "resume") + " noelplayer")
+            try:
+                mode = self.player.send("status noelplayer mode")
+                if mode == "playing":
+                    self.player.send("pause noelplayer")
+                elif mode == "paused":
+                    self.player.send("resume noelplayer")
+            except OSError as exc:
+                messagebox.showerror("Reproducción", str(exc))
 
     def volume_changed(self, value):
         if self.player.opened:
@@ -829,6 +842,12 @@ class Studio:
         self.select_song(index)
         fn()
 
+    def resize_cards(self, event):
+        cols = 3 if event.width >= 1140 else 2 if event.width >= 760 else 1
+        if cols != self.card_columns:
+            self.card_columns = cols
+            self.draw_cards()
+
     def draw_cards(self):
         for widget in self.home_cards.winfo_children():
             widget.destroy()
@@ -839,7 +858,7 @@ class Studio:
         palettes = [("#c80979","#5335af"),("#1551b8","#00a0aa"),("#e85324","#b71d6e"),("#5138ae","#087d97")]
         for pos, (i, song) in enumerate(data):
             card = ttk.Frame(self.home_cards, padding=7)
-            card.grid(row=pos//2, column=pos%2, sticky="nsew", padx=4, pady=4)
+            card.grid(row=pos//self.card_columns, column=pos%self.card_columns, sticky="nsew", padx=4, pady=4)
             top = tk.Canvas(card, height=106, highlightthickness=0, cursor="hand2")
             top.pack(fill="x")
             left,right = palettes[i%len(palettes)]
@@ -849,7 +868,7 @@ class Studio:
             top.bind("<Button-1>", lambda _, n=i: self.card_action(n,self.play))
             row = ttk.Frame(card)
             row.pack(fill="x", pady=4)
-            for text, fn in [("▶",self.play),("⏸",self.pause),("■",self.stop_player),("↓ MP3",lambda: self.export("mp3")),
+            for text, fn in [("▶",self.play),("⏸",self.pause_selected),("■",self.stop_selected),("↓ MP3",lambda: self.export("mp3")),
                              ("↓ WAV",self.export),("Letra",self.view_lyrics)]:
                 ttk.Button(row,text=text,command=lambda n=i,f=fn:self.card_action(n,f)).pack(side="left",padx=1)
             row2 = ttk.Frame(card)
@@ -859,8 +878,8 @@ class Studio:
             for text, fn in [("Renombrar",lambda:self.edit_song(False)),("Ubicación",self.open_folder),
                              ("Compartir",self.share_song)]:
                 ttk.Button(row2,text=text,command=lambda n=i,f=fn:self.card_action(n,f)).pack(side="left",padx=1)
-        for col in range(2):
-            self.home_cards.columnconfigure(col, weight=1)
+        for col in range(3):
+            self.home_cards.columnconfigure(col, weight=1 if col < self.card_columns else 0)
 
     def update_heart(self):
         if not hasattr(self, "favorite_button"):
@@ -888,6 +907,14 @@ class Studio:
             os.startfile(path.parent)
             self.status.set("Ruta copiada. Adjunta el WAV o exporta MP3 para compartirlo.")
 
+    def pause_selected(self):
+        if self.history.curselection() and self.files[self.history.curselection()[0]] == self.playing_file:
+            self.pause()
+
+    def stop_selected(self):
+        if self.history.curselection() and self.files[self.history.curselection()[0]] == self.playing_file:
+            self.stop_player()
+
     def resume_or_play(self):
         if self.player.opened:
             try:
@@ -909,7 +936,7 @@ class Studio:
         lyrics = self.lyrics.get("1.0", "end").strip()
         if self.instrumental.get():
             lyrics = ""
-        if not self.instrumental.get() and self.voice.get() != "Automática" and not lyrics:
+        if not self.instrumental.get() and not lyrics:
             messagebox.showinfo("Letra", "Escribe una letra o usa el compositor IA para generar una canción con voz.")
             return
         seconds = max(15, min(300, self.duration.get()))

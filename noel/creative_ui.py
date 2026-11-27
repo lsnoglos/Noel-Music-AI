@@ -15,11 +15,18 @@ class ScrollFrame(ttk.Frame):
         self.item = self.canvas.create_window((0,0), window=self.inner, anchor="nw")
         self.inner.bind("<Configure>", lambda _: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self.item, width=e.width))
-        self.canvas.bind("<MouseWheel>", self.wheel)
-        self.inner.bind("<MouseWheel>", self.wheel)
+        self.winfo_toplevel().bind("<MouseWheel>", self.wheel, add="+")
 
     def wheel(self, event):
-        self.canvas.yview_scroll(-int(event.delta/120), "units")
+        widget = event.widget
+        # Only scroll the pane containing the pointer; preserve editable text/listbox scrolling.
+        if isinstance(widget, (tk.Text, tk.Listbox, ttk.Combobox)):
+            return
+        while widget is not None:
+            if widget is self:
+                self.canvas.yview_scroll(-int(event.delta/120), "units")
+                return "break"
+            widget = getattr(widget, "master", None)
 
 
 def tooltip(widget, text, delay=3000):

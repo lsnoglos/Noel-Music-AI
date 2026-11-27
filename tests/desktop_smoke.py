@@ -1,6 +1,8 @@
-"""Open the real desktop with an empty private configuration on a Windows runner."""
+"""Open and exercise the actual Windows desktop without model downloads."""
+import json
 import tempfile
 import tkinter as tk
+import wave
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,35 +11,61 @@ from noel.gui import Studio
 
 def main():
     with tempfile.TemporaryDirectory() as tmp, patch("noel.gui.ROOT", Path(tmp)), patch("noel.gui.RUNTIME", Path(tmp)/".runtime"):
+        run = Path(tmp)/"runs"/"example"
+        run.mkdir(parents=True)
+        (run/"version.json").write_text(json.dumps({"request":{"caption":"Demo","lyrics":"Hola"},"metrics":{"actual_seconds":1}}))
+        with wave.open(str(run/"song.wav"), "wb") as f:
+            f.setparams((2,2,48000,0,"NONE","not compressed"))
+            f.writeframes(b"\x01\x02\x03\x04"*48000)
         window = tk.Tk()
         studio = Studio(window)
         assert set(studio.panels) == {"Inicio", "Crear música", "Modelos", "Configuración"}
         assert studio.modern, "ttkbootstrap no se activó"
         assert "Niño" in studio.voice["values"]
-        studio.instrumental.set(True)
-        studio.toggle_instrumental()
-        assert str(studio.voice["state"]) == "disabled"
-        studio.instrumental.set(False)
-        studio.toggle_instrumental()
-        studio.lyric_dialog()
-        # Startup inspection may still be active; verify the panel directly.
-        studio.structure.set("Personalizada")
-        studio.toggle_sections()
-        assert len(studio.sections) == 6
-        assert "Inglés" in studio.lyric_language["values"]
         assert studio.model_choice.current() == 0
-        studio.show_page("Crear música")
-        studio.duration.set(300)
-        assert studio.duration.get() == 300
-        studio.show_page("Inicio")
+        failures = []
         def check():
             if studio.busy:
                 window.after(100, check)
-            else:
+                return
+            try:
+                window.geometry("900x650")
+                studio.show_page("Crear música")
+                window.update_idletasks()
+                assert studio.player_frame.winfo_ismapped()
+                assert studio.player_frame.winfo_y()+studio.player_frame.winfo_height() <= window.winfo_height(), "reproductor recortado"
+                studio.duration.set(300)
+                assert studio.duration.get() == 300
+                studio.instrumental.set(True)
+                studio.toggle_instrumental()
+                assert str(studio.voice["state"]) == "disabled"
+                studio.instrumental.set(False)
+                studio.toggle_instrumental()
+                studio.lyric_dialog()
+                window.update_idletasks()
+                assert studio.composing and studio.composer.winfo_ismapped()
+                studio.structure.set("Personalizada")
+                studio.toggle_sections()
+                assert len(studio.sections) == 6
+                assert "Inglés" in studio.lyric_language["values"]
+                studio.hide_composer()
+                studio.toggle_instruments()
+                assert studio.instrument_panel.winfo_manager() == "pack"
+                studio.instrument_vars["Piano"].set(True)
+                assert "piano" in studio.musical_caption()
+                studio.show_page("Inicio")
+                window.update_idletasks()
+                assert len(studio.song_data) == 1 and studio.home_cards.winfo_children()
+                assert all("No descargado" in x.cget("text") for x in studio.model_states.values())
+            except Exception as exc:
+                failures.append(exc)
+            finally:
                 studio.close()
         window.after(300, check)
         window.after(30000, window.quit)
         window.mainloop()
+        if failures:
+            raise failures[0]
         if not studio.closing:
             raise TimeoutError("La ventana no respondió al diagnóstico.")
 
