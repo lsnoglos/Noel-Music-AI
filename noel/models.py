@@ -13,6 +13,16 @@ MODELS = {
     "vae": ("vae-BF16.gguf", 337420928, "0599862ac5d15cd308e1d2e368373aea6c02e25ebd1737ad4a4562a0901b0ef8"),
 }
 
+# Optional weights from the same pinned Hugging Face revision. No automatic downloads.
+OPTIONAL = {
+    "lm": ("acestep-5Hz-lm-0.6B-Q8_0.gguf", 709846656, "bdaf9e292d4470f31c19cafeaca1b74936a114667e3a85e5d33b65247e9908ec"),
+    "sft": ("acestep-v15-sft-Q8_0.gguf", 2549527936, "17f1984e48aaab27b3eb8ccbf0b754a6656e677884c60ea7003845cfc0059b70"),
+}
+
+
+def catalog():
+    return {**MODELS, **OPTIONAL}
+
 
 def matches(path, size, digest):
     if not path.is_file() or path.stat().st_size != size:
@@ -23,7 +33,7 @@ def matches(path, size, digest):
 
 def install(directory: Path, approved: bool, selected=None, repair=False, cancel=None, progress=None):
     print("Modelos de Serveurperso/ACE-Step-1.5-GGUF:")
-    for name, size, _ in MODELS.values():
+    for name, size, _ in catalog().values():
         print(f"  {name}   {size:,} bytes")
     if not approved:
         print("Use models --download para autorizar la descarga.")
@@ -33,7 +43,7 @@ def install(directory: Path, approved: bool, selected=None, repair=False, cancel
     lock.touch(exist_ok=False)
     try:
         for key in (MODELS if selected is None else selected):
-            name, size, digest = MODELS[key]
+            name, size, digest = catalog()[key]
             dest = directory / name
             if dest.exists():
                 if matches(dest, size, digest):
