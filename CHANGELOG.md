@@ -28,3 +28,5 @@ Arranque gráfico, entorno privado opcional, gestión de descargas, biblioteca m
 - Laboratorio de voz hablada opcional con Qwen3-TTS; géneros ampliados, ambiente acústico diferenciado, guía vocal en caption y letra.
 
 - Mis voces: flujo de prueba previo al guardado, importación MP3, historial persistente y modelos centralizados.
+
+- Reparación de dependencias privadas para importar MP3/WAV después de actualizar; verificación offline de wheels y diagnóstico explícito.
