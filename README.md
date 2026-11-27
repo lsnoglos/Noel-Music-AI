@@ -33,3 +33,7 @@ Consulte el [protocolo de medición](docs/benchmarks/PROTOCOL.md), los [resultad
 ## Desarrollo
 
 Python 3.11 o superior, biblioteca estándar. Desde la raíz: `python -m unittest discover -v`. Prueba contra el servidor compilado: `python -m tests.server_contract RUTA_AL_BINARIO`. El motor y los pesos se instalan por separado. [Investigación](docs/research/ENGINE_EVALUATION.md) · [Arquitectura](docs/architecture/SYSTEM_DESIGN.md) · [Hoja de ruta](docs/ROADMAP.md).
+
+## Mejoras de uso (rama de desarrollo)
+
+La interfaz reúne Inicio, Crear música, Modelos y Configuración. Las descargas se gestionan por componente; los tres pesos básicos existentes siguen siendo necesarios. Los modelos LM 0.6B (709.85 MB) y SFT Q8 son opcionales. El compositor local usa /lm inspire y la letra permanece editable. Las preferencias vocales son condicionamiento textual, no una garantía de identidad o género vocal. El perfil Turbo Q8 de 8 pasos sigue predeterminado. Hasta 300 s y SFT son experimentales hasta comprobar la RTX 3070. El paquete Windows incorpora ruedas de ttkbootstrap/Pillow para una instalación privada sin conexión; si se ejecuta solo el código fuente sin esas bibliotecas se usa Tk como alternativa. Para desarrollo: python -m pip install -r requirements-ui.txt (preferentemente en un entorno virtual).
