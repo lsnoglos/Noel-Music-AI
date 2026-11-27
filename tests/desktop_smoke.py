@@ -58,6 +58,12 @@ def main():
                 window.update_idletasks()
                 assert len(studio.song_data) == 1 and studio.home_cards.winfo_children()
                 assert all("No descargado" in x.cget("text") for x in studio.model_states.values())
+                assert "qwen" in studio.model_states and "turbo4" in studio.model_states
+                assert "CPU + GPU" in studio.device_setting["values"]
+                studio.lyrics.delete("1.0","end")
+                studio.lyrics.insert("1.0","Hola mundo")
+                studio.copy_lyrics()
+                assert window.clipboard_get()=="Hola mundo"
             except Exception as exc:
                 failures.append(exc)
             finally:

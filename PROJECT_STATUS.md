@@ -17,3 +17,5 @@ Incremento de usabilidad: interfaz de cuatro secciones, asistente de composició
 Separación de distribución: compilación CUDA manual, actualización de aplicación y portable completo desde un motor publicado y fijado por SHA-256. Actualizador con copia de seguridad y preservación de datos; pruebas en CI y prueba real de actualización pendientes.
 
 Interfaz creativa: reproductor fijo, tarjetas, exportación MP3, ayuda flotante, compositor integrado multilingüe y estructura personalizada, instrumentos, estados de modelos y mantenimiento explicado. Pendientes las pruebas reales de voz, idioma, instrumentación y exportación en el equipo objetivo. Sin cambios de motor CUDA.
+
+Centro de modelos: importación/exportación verificada, Qwen independiente con instalación por dispositivo, Turbo Q4, preferencias persistentes y copiar letra. Pendiente comprobar inferencia local Qwen y CPU/híbrido reales. No se recompila ACE-Step.
