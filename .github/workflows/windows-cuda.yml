@@ -2,8 +2,8 @@ name: Noel Music AI portable
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/portable-studio]
-    paths: ['.github/workflows/windows-cuda.yml', 'scripts/**', 'noel/**', 'NoelMusicAI.cmd']
+    branches: [main, feature/portable-studio, feature/studio-usability]
+    paths: ['.github/workflows/windows-cuda.yml', 'scripts/**', 'noel/**', 'NoelMusicAI.cmd', 'requirements-ui.txt']
 permissions:
   contents: read
 jobs:

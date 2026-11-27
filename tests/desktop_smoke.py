@@ -11,6 +11,14 @@ def main():
     with tempfile.TemporaryDirectory() as tmp, patch("noel.gui.ROOT", Path(tmp)), patch("noel.gui.RUNTIME", Path(tmp)/".runtime"):
         window = tk.Tk()
         studio = Studio(window)
+        assert set(studio.panels) == {"Inicio", "Crear música", "Modelos", "Configuración"}
+        assert studio.modern, "ttkbootstrap no se activó"
+        assert "Instrumental" in studio.voice["values"]
+        assert studio.model_choice.current() == 0
+        studio.show_page("Crear música")
+        studio.duration.set(300)
+        assert studio.duration.get() == 300
+        studio.show_page("Inicio")
         def check():
             if studio.busy:
                 window.after(100, check)

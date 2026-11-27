@@ -37,6 +37,8 @@ class Studio:
         self.busy = self.closing = False
         self.proc = None
         self.playing_file = None
+        self.verified = {}
+        self.new_version = None
         RUNTIME.mkdir(exist_ok=True)
         self.config = RUNTIME / "studio.json"
         self.paths = json.loads(self.config.read_text("utf-8")) if self.config.exists() else {}
@@ -133,11 +135,12 @@ class Studio:
             self.help(row, descriptions[key])
             ttk.Button(row, text="Descargar / verificar", command=lambda k=key: self.install([k])).pack(side="right")
         ttk.Label(settings, text="Configuración", font=("Segoe UI", 22, "bold")).pack(anchor="w")
+        ttk.Label(settings, text="Tema moderno ttkbootstrap" if self.modern else "Tema básico · ttkbootstrap no disponible").pack(anchor="w", pady=4)
         self.button(settings, "Alternar tema claro / oscuro", lambda: self.theme("Claro" if self.dark else "Oscuro"))
         self.button(settings, "Cambiar carpeta de modelos", lambda: self.folder("models"))
         self.button(settings, "Cambiar carpeta de canciones", lambda: self.folder("runs"))
         self.button(settings, "Instalar / reparar motor Windows", self.find_release)
-        self.button(settings, "Comprobar componentes (diagnóstico)", self.inspect)
+        self.button(settings, "Comprobar componentes (diagnóstico)", self.force_inspect)
         self.button(settings, "Guardar informe de diagnóstico", self.report)
         self.observed = ttk.Label(settings, wraplength=680)
         self.observed.pack(anchor="w", pady=12)
@@ -164,7 +167,7 @@ class Studio:
         controls = ttk.Frame(player)
         controls.pack(fill="x")
         for text, fn in [("◀◀", lambda: self.next_song(-1)), ("−10 s", lambda: self.skip(-10000)),
-                         ("▶", self.play), ("Ⅱ", self.pause), ("■", self.player.close),
+                         ("▶", self.play), ("Ⅱ", self.pause), ("■", self.stop_player),
                          ("+10 s", lambda: self.skip(10000)), ("▶▶", lambda: self.next_song(1))]:
             ttk.Button(controls, text=text, command=fn).pack(side="left", padx=2)
         self.clock = ttk.Label(controls, text="0:00 / 0:00")
@@ -218,6 +221,18 @@ class Studio:
     def format_time(ms):
         seconds = max(0, int(ms) // 1000)
         return f"{seconds//60}:{seconds%60:02d}"
+
+    def stop_player(self):
+        try:
+            self.player.close()
+        except OSError as exc:
+            messagebox.showerror("Reproducción", str(exc))
+        self.playing_file = None
+        self.spectrum.delete("all")
+        self.waveform.delete("all")
+        self.position.set(0)
+        self.clock.configure(text="0:00 / 0:00")
+        self.now_playing.configure(text="Selecciona una canción")
 
     def finish_seek(self, _):
         self.scrubbing = False
@@ -283,6 +298,8 @@ class Studio:
         self.start_time = time.monotonic()
         self.stage = action
         self.action = action
+        self.download_sample = None
+        self.generate_button.state(["disabled"])
         self.progress.configure(mode="determinate" if download else "indeterminate", value=0, maximum=100)
         self.progress.pack(side="right", padx=6)
         if not download:
@@ -292,6 +309,8 @@ class Studio:
         def work():
             try:
                 self.events.put(("done", function() or "Finalizado"))
+            except InterruptedError:
+                self.events.put(("done", "Operación cancelada."))
             except Exception as exc:
                 self.events.put(("error", str(exc)))
         threading.Thread(target=work, daemon=True).start()
@@ -310,6 +329,7 @@ class Studio:
                 for key, state in inventory.items():
                     self.model_states[key].configure(text=state)
                 if missing:
+                    self.home_notice.configure(command=lambda: self.show_page("Configuración" if not self.binary().exists() else "Modelos"))
                     self.home_notice.pack(anchor="w", pady=8)
                 else:
                     self.home_notice.pack_forget()
@@ -318,23 +338,36 @@ class Studio:
                 self.model_states[key].configure(text=state)
             elif kind == "progress":
                 label, n, total = text
-                self.stage = label
-                self.progress.configure(mode="determinate", value=100*n/max(total, 1))
+                percent = 100*n/max(total, 1)
+                self.stage = f"{label} · {percent:.1f}%"
+                now = time.monotonic()
+                if self.download_sample:
+                    old_n, old_total, old_t = self.download_sample
+                    if total == old_total and n > old_n and now > old_t:
+                        speed = (n-old_n)/(now-old_t)
+                        self.stage += f" · {speed/1e6:.1f} MB/s"
+                self.download_sample = n, total, now
+                self.progress.configure(mode="determinate", value=percent)
             elif kind == "lyrics":
                 self.lyrics.delete("1.0", "end")
                 self.lyrics.insert("1.0", text)
             elif kind == "song":
-                self.latest.configure(text=text)
+                label, version = text
+                self.latest.configure(text=label)
+                self.new_version = version
                 self.show_page("Crear música")
             else:
                 self.busy = False
                 self.progress.stop()
                 self.progress.pack_forget()
                 self.cancel_button.pack_forget()
+                self.generate_button.state(["!disabled"])
                 self.status.set(text)
                 if kind == "error" and not self.closing:
                     messagebox.showerror("Noel Music AI", text)
                 self.library()
+                if kind == "done" and not self.closing and self.action in ("Instalación de modelos", "Instalación del motor"):
+                    self.inspect()
         if self.player.opened:
             try:
                 position = int(self.player.send("status noelplayer position"))
@@ -361,7 +394,10 @@ class Studio:
             self.run(lambda: install_engine(ROOT, asset, self.cancel, lambda n,total: self.events.put(("progress", (f"Motor · {n/1e6:.1f}/{total/1e6:.1f} MB", n, total)))), "Instalación del motor", download=True)
 
     def close(self):
-        self.player.close()
+        try:
+            self.player.close()
+        except OSError:
+            pass
         self.closing = True
         self.cancel.set()
 
@@ -370,6 +406,7 @@ class Studio:
             return
         path = filedialog.askdirectory()
         if path:
+            self.verified.clear()
             self.paths[key] = path
             setattr(self, key, Path(path))
             write_json(self.config, self.paths)
@@ -396,9 +433,12 @@ class Studio:
             except (OSError, ValueError, KeyError):
                 continue
         if self.files:
-            index = self.files.index(selected) if selected in self.files else 0
+            latest = self.runs/self.new_version/"song.wav" if self.new_version else None
+            index = self.files.index(latest) if latest in self.files else self.files.index(selected) if selected in self.files else 0
             for listing in (self.home_history, self.create_history):
                 listing.selection_set(index)
+                listing.see(index)
+            self.new_version = None
 
     def play(self):
         if self.history.curselection():
@@ -457,6 +497,25 @@ class Studio:
     def binary(self):
         return binary_path(ROOT)
 
+    def force_inspect(self):
+        if not self.busy:
+            self.verified.clear()
+            self.inspect()
+
+    def check_model(self, name, size, digest):
+        path = self.models/name
+        try:
+            st = path.stat()
+        except FileNotFoundError:
+            return False
+        key = (str(path), st.st_size, st.st_mtime_ns, st.st_ctime_ns, size, digest)
+        if self.verified.get(str(path)) == key:
+            return True
+        ok = matches(path, size, digest)
+        if ok:
+            self.verified[str(path)] = key
+        return ok
+
     def inspect(self):
         def work():
             info = snapshot()
@@ -468,13 +527,13 @@ class Studio:
             inventory = {}
             missing = not self.binary().exists()
             for key, (name, size, digest) in catalog().items():
-                ok = matches(self.models/name, size, digest)
+                ok = self.check_model(name, size, digest)
                 state = "Verificado" if ok else "No instalado / requiere reparación"
                 inventory[key] = f"{state} · {size/1e6:.0f} MB · {'Necesario' if key in MODELS else 'Opcional'}"
                 missing = missing or (key in MODELS and not ok)
                 rows.append(f"{name} · {state}")
             self.events.put(("inventory", ("\n".join(rows), inventory, missing)))
-        self.run(work)
+        self.run(work, "Diagnóstico")
 
     def install(self, keys):
         if self.busy or not keys:
@@ -483,6 +542,7 @@ class Studio:
         if not messagebox.askyesno("Modelos seleccionados", f"Verificar y descargar desde Hugging Face los archivos faltantes o dañados (hasta {total/1e9:.2f} GB)?"):
             return
         def work():
+            self.verified.clear()
             from .models import install
             install(self.models, True, keys, repair=True, cancel=self.cancel,
                     progress=lambda name, n, total: self.events.put(("progress", (f"{name} · {n/1e6:.1f} / {total/1e6:.1f} MB", n, total))))
@@ -511,7 +571,7 @@ class Studio:
             name, size, digest = catalog()[key]
             if self.cancel.is_set():
                 raise InterruptedError("Cancelado")
-            if not matches(self.models/name, size, digest):
+            if not self.check_model(name, size, digest):
                 raise ValueError(f"Instala o verifica {name} en Modelos.")
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
@@ -618,7 +678,7 @@ class Studio:
                                 total_seconds=result["total_s"], generated_seconds=result["actual_seconds"]))
                 if title:
                     write_json(self.runs/result["version"]/"display.json", {"title": title})
-                self.events.put(("song", f"{title or 'Nueva canción'} · {result['actual_seconds']:.0f} s · lista para escuchar"))
+                self.events.put(("song", (f"{title or 'Nueva canción'} · {result['actual_seconds']:.0f} s · lista para escuchar", result["version"])))
                 return "Canción guardada · " + result["version"]
         self.run(work, "Generación")
 

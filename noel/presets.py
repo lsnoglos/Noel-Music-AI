@@ -46,6 +46,9 @@ def caption(genre, mood, ambience, voice, style):
 def lyric_prompt(topic, musical_style, structure, complexity, extra):
     if not topic.strip():
         raise ValueError("Escribe primero el tema de la canción.")
+    complexity = {"Poética": "poetic", "Sencilla y pegadiza": "simple and catchy",
+                  "Narrativa y profunda": "narrative and meaningful", "Divertida": "playful",
+                  "Romántica": "romantic"}.get(complexity, complexity)
     return (f"Write original Spanish song lyrics about: {topic.strip()}. "
             f"Musical style: {musical_style}. Structure: {STRUCTURES[structure]}. "
             f"Writing preference: {complexity}. Use bracketed section labels and singable lines. "
