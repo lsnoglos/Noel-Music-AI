@@ -33,12 +33,18 @@ def operation_warning(info,device,purpose,selected):
     gpu=info.get("gpu") or {}
     free=gpu.get("free_mib") or 0
     ram=(info.get("ram_available") or 0)/2**30
-    if purpose not in ("music","lyrics"):
+    if purpose not in ("music","lyrics","editor"):
         raise ValueError("Operación desconocida")
-    models=MUSIC if purpose=="music" else LYRIC_MODELS
+    models=LYRIC_MODELS if purpose=="lyrics" else MUSIC
     label=models[selected]
     if device!="cpu" and not gpu:
         return f"El modelo {label} está configurado para GPU, pero no se detectó NVIDIA. Ajusta el procesador a CPU para poder utilizarlo."
+    if purpose=="editor":
+        if device=="cpu":
+            return "El Editor musical procesa audio de referencia y puede requerir más tiempo y memoria que crear música. En CPU comienza con fragmentos cortos y cierra programas innecesarios."
+        if free<4500 or ram<4:
+            return "Recursos limitados para edición de audio. Libera memoria y prueba fragmentos cortos con Turbo Q4."
+        return ""
     if purpose=="lyrics":
         if ram<3:
             return f"Solo hay {ram:.1f} GiB de RAM libre. {label} puede agotar la memoria; libera recursos antes de componer."

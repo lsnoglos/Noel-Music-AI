@@ -4,18 +4,29 @@ from tkinter import ttk
 
 
 class ScrollFrame(ttk.Frame):
-    def __init__(self, parent):
+    def __init__(self, parent, auto_hide=False):
         super().__init__(parent)
+        self.auto_hide=auto_hide
         self.canvas = tk.Canvas(self, highlightthickness=0, bg="#13172b")
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
+        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.scroll_position)
+        if not auto_hide:
+            self.scrollbar.pack(side="right", fill="y")
         self.canvas.pack(side="left", fill="both", expand=True)
         self.inner = ttk.Frame(self.canvas, padding=3)
         self.item = self.canvas.create_window((0,0), window=self.inner, anchor="nw")
         self.inner.bind("<Configure>", lambda _: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self.item, width=e.width))
         self.winfo_toplevel().bind("<MouseWheel>", self.wheel, add="+")
+
+    def scroll_position(self,first,last):
+        self.scrollbar.set(first,last)
+        if self.auto_hide:
+            needed=float(last)-float(first)<.999
+            if needed and not self.scrollbar.winfo_manager():
+                self.scrollbar.pack(side="right",fill="y",before=self.canvas)
+            elif not needed and self.scrollbar.winfo_manager():
+                self.scrollbar.pack_forget()
 
     def wheel(self, event):
         widget = event.widget

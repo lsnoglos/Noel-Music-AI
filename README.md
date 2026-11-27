@@ -64,3 +64,5 @@ Generar, instrumentos visibles (Automático/Manual) y duración inicial 60 s per
 
 ### Interfaz compacta
 Los modelos para música y letras se seleccionan exclusivamente en Configuración. Los avisos de recursos son específicos por operación, centrados y solo permiten continuar o ajustar modelos. Entradas y listas blancas, copiar letra deshabilitado si está vacía, compositor compacto y tarjetas con play/pausa central y menú contextual. No se incorpora todavía Stable Audio 3: requiere un backend LiteRT separado, validación de licencias/descargas y pruebas CPU. SongGen no cuenta con benchmark CPU ni español validado.
+
+El compositor mantiene Generar letra visible. Solo si la resolución o escala impiden mostrar todos los campos aparece desplazamiento auxiliar automático; la edición musical también tiene un aviso de recursos propio.

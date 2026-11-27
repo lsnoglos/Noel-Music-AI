@@ -56,6 +56,9 @@ def main():
                 assert len(studio.instrument_checks)==20
                 assert studio.generate_button.master == studio.workspace
                 assert studio.composer.master == studio.results_container
+                assert studio.compose_button.winfo_ismapped()
+                assert studio.compose_button.winfo_rooty()+studio.compose_button.winfo_height() <= studio.player_frame.winfo_rooty()
+                assert studio.lyrics.cget("background")=="#ffffff"
                 studio.structure.set("Personalizada")
                 studio.toggle_sections()
                 assert len(studio.sections) == 6

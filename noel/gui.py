@@ -208,7 +208,7 @@ class Studio:
         self.copy_button = copy_button = ttk.Button(lyricbar, text="▣ Copiar", command=self.copy_lyrics, state="disabled")
         copy_button.pack(side="right", padx=4)
         tooltip(copy_button, "Copiar letra al portapapeles")
-        self.lyrics = tk.Text(form, height=7, wrap="word", font=("Segoe UI", 11), relief="flat")
+        self.lyrics = tk.Text(form, height=6, wrap="word", font=("Segoe UI", 11), relief="flat")
         self.lyrics.pack(fill="x")
         self.lyrics.bind("<<Modified>>",self.lyrics_changed)
         self.lyrics.edit_modified(False)
@@ -463,7 +463,7 @@ class Studio:
             self.topic.configure(background="#ffffff", foreground="#22243a", insertbackground="#22243a")
         if hasattr(self,"edit_lyrics"):
             self.edit_lyrics.configure(background="#ffffff",foreground="#22243a",insertbackground="#22243a")
-        for scroll in (getattr(self, "home_scroll", None), getattr(self, "form_scroll", None)):
+        for scroll in (getattr(self, "home_scroll", None), getattr(self, "form_scroll", None),getattr(self,"composer_scroll",None)):
             if scroll:
                 scroll.canvas.configure(background=bg)
         if hasattr(self, "song_data") and hasattr(self, "home_cards"):
@@ -917,7 +917,7 @@ class Studio:
         self.edit_consent=tk.BooleanVar(value=False)
         self.edit_consent_widget=ttk.Checkbutton(form,text="Tengo autorización para editar el audio y utilizar las voces de referencia.",variable=self.edit_consent)
         self.edit_consent_widget.pack(anchor="w",pady=6)
-        self.edit_button=ttk.Button(form,text="✦ Generar versión editada",style="Accent.TButton",command=self.run_editor)
+        self.edit_button=ttk.Button(form,text="✦ Generar versión editada",style="Accent.TButton",command=lambda:self.refresh_then(self.run_editor))
         self.edit_button.pack(fill="x",pady=5)
         self.edit_status=ttk.Label(form,text="Pista instrumental idéntica + letra nueva: módulo de separación y síntesis vocal pendiente.",wraplength=650)
         self.edit_status.pack(anchor="w",pady=6)
@@ -1012,6 +1012,8 @@ class Studio:
             seconds=int(self.edit_duration.get()) if mode=="voice" else 30
         except ValueError:
             messagebox.showerror("Editor musical","Revisa los tiempos.")
+            return
+        if not self.preflight("editor",model):
             return
         fidelity=self.edit_fidelity.get()
         preserve=self.exact_pcm.get()
@@ -1123,7 +1125,7 @@ class Studio:
         dialog.transient(self.w)
         frame=ttk.Frame(dialog,padding=16)
         frame.pack(fill="both",expand=True)
-        ttk.Label(frame,text="Generación de letras" if purpose=="lyrics" else "Generación musical",
+        ttk.Label(frame,text={"lyrics":"Generación de letras","music":"Generación musical","editor":"Edición musical"}[purpose],
                   style="Field.TLabel",font=("Segoe UI",15,"bold")).pack(anchor="w",pady=(0,8))
         ttk.Label(frame,text=warning,wraplength=420,justify="left").pack(anchor="w")
         answer=tk.StringVar(value="cancel")
@@ -1255,10 +1257,14 @@ class Studio:
             self.hide_composer()
 
     def build_composer(self, parent):
-        self.composer=ttk.Frame(parent,padding=(0,4))
-        frame=self.composer
-        header=ttk.Frame(frame)
-        header.pack(fill="x")
+        self.composer=ttk.Frame(parent,padding=(0,2))
+        header=ttk.Frame(self.composer)
+        header.pack(side="top",fill="x")
+        footer=ttk.Frame(self.composer)
+        footer.pack(side="bottom",fill="x")
+        self.composer_scroll=ScrollFrame(self.composer,auto_hide=True)
+        self.composer_scroll.pack(fill="both",expand=True)
+        frame=self.composer_scroll.inner
         ttk.Label(header,text="✦ Compositor IA",style="Field.TLabel",font=("Segoe UI",13,"bold")).pack(side="left")
         ttk.Button(header,text="×",width=2,command=self.hide_composer).pack(side="right")
         self.field_label(frame,"Tema de la canción","Describe lo que quieres contar.")
@@ -1296,9 +1302,9 @@ class Studio:
         self.field_label(frame,"Instrucción adicional","Indicaciones complementarias.")
         self.extra=ttk.Entry(frame)
         self.extra.pack(fill="x")
-        self.compose_button=ttk.Button(frame,text="✦ Generar letra",style="Accent.TButton",command=lambda:self.refresh_then(self.compose_lyrics))
-        self.compose_button.pack(fill="x",pady=(5,2))
-        self.lyric_notice=ttk.Label(frame,text="",wraplength=280)
+        self.compose_button=ttk.Button(footer,text="✦ Generar letra",style="Accent.TButton",command=lambda:self.refresh_then(self.compose_lyrics))
+        self.compose_button.pack(fill="x",pady=(3,1))
+        self.lyric_notice=ttk.Label(footer,text="",wraplength=280)
         self.lyric_notice.pack(anchor="w")
 
     def toggle_sections(self, _=None):
@@ -1313,6 +1319,7 @@ class Studio:
         self.lyric_language.set(self.language.get())
         self.results.pack_forget()
         self.composer.pack(fill="both", expand=True)
+        self.composer_scroll.canvas.yview_moveto(0)
         self.composing = True
 
     def hide_composer(self):
@@ -1339,8 +1346,6 @@ class Studio:
         selected = self.lyrics_default
         if not self.preflight("lyrics", selected):
             return
-        selected = self.lyrics_default
-        self.lyric_notice.configure(text="Generando letra en " + language + "…")
         self.language.set(language)
         mode = self.device_mode
         if selected in TEXT_BASES:
@@ -1368,6 +1373,7 @@ class Studio:
                                              lm_model=OPTIONAL["lm"][0], lm_mode="inspire", lm_batch_size=1))
                 self.events.put(("lyrics", lyrics))
                 return "Letra generada. Revísala antes de crear música."
+        self.lyric_notice.configure(text="Generando letra en " + language + "…")
         self.run(work, "Composición")
 
     def select_song(self, index):
@@ -1520,7 +1526,6 @@ class Studio:
         model = self.music_default
         if not self.preflight("music",model):
             return
-        model = self.music_default
         if seconds > 120 or model == "sft":
             if not messagebox.askyesno("Configuración experimental", "Esta duración o modelo aún no tiene benchmark suficiente en tu equipo. ¿Continuar?"):
                 return

@@ -7,6 +7,8 @@ class WarningTests(unittest.TestCase):
         self.assertEqual(operation_warning(info,"cpu","lyrics","qwen17"),"")
         self.assertIn("Turbo Q4",operation_warning(info,"cpu","music","turbo4"))
         self.assertNotIn("Qwen",operation_warning(info,"cpu","music","turbo4"))
+    def test_editor(self):
+        self.assertIn("Editor musical",operation_warning({"gpu":None,"ram_available":9*2**30},"cpu","editor","turbo4"))
     def test_gpu(self):
         self.assertEqual(operation_warning({"gpu":{"free_mib":8000},"ram_available":9*2**30},"gpu","music","dit"),"")
     def test_missing_gpu(self):
