@@ -2,7 +2,7 @@ name: Noel Music AI application packages
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/studio-usability]
+    branches: [main, feature/studio-usability, feature/creative-interface]
     paths: ['noel/**', 'scripts/**', 'docs/**', 'tests/**', 'NoelMusicAI.cmd', 'requirements-ui.txt', 'README.md', 'PROJECT_STATUS.md', 'CHANGELOG.md', '.github/workflows/app-package.yml']
 permissions:
   contents: read

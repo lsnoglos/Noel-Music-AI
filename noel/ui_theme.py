@@ -9,6 +9,7 @@ def create_style(window, root, runtime):
     sys.path.insert(0, str(target))
     try:
         import ttkbootstrap
+        import lameenc
     except ImportError:
         wheels = root / "ui-wheels"
         if wheels.is_dir():
@@ -20,6 +21,7 @@ def create_style(window, root, runtime):
                 import importlib
                 importlib.invalidate_caches()
                 import ttkbootstrap
+                import lameenc
             except (ImportError, OSError, subprocess.SubprocessError):
                 return ttk.Style(window), False
         else:
