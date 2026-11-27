@@ -24,3 +24,5 @@ Arranque gráfico, entorno privado opcional, gestión de descargas, biblioteca m
 - Interfaz compacta: entradas blancas, compositor sin selector duplicado, avisos por operación, tarjetas play/pausa y menú contextual.
 
 - Mis voces: perfiles privados reutilizables y conversión vocal experimental no destructiva.
+
+- Laboratorio de voz hablada opcional con Qwen3-TTS; géneros ampliados, ambiente acústico diferenciado, guía vocal en caption y letra.

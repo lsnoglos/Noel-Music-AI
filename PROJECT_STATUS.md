@@ -29,3 +29,5 @@ Interfaz compacta y avisos separados. Stable Audio 3 Small Music permanece en ev
 Corrección adicional: desplazamiento auxiliar solo si no caben los campos y botón de composición fijo; aviso específico de edición con CPU o memoria limitada.
 
 Mis voces: perfil de referencia local, grabación/importación WAV, selección en creación y edición, conversión de canciones existentes; integración experimental de audio.cpp/HTDemucs/Seed-VC con descargas verificadas. Pendiente validar micrófono Windows, contrato real de CLI, formato de stems e inferencia GPU/CPU. MIDI y motores instrumentales ligeros pendientes.
+
+Laboratorio TTS: Qwen3-TTS 0.6B Q8 con SHA-256, transcripción opcional, frase de prueba y exportación WAV; géneros ampliados y condicionamiento estructurado. Pendiente inferencia real, compatibilidad CPU/CUDA, seguimiento de tipos vocales (niño/tenor/etc.) y comparación perceptual.

@@ -10,6 +10,7 @@ import time
 import urllib.request
 import uuid
 import zipfile
+import wave
 from pathlib import Path
 from .voice_profiles import read_pcm,resample,save_pcm,hash_file
 from .studio import write_json
@@ -17,7 +18,9 @@ from .studio import write_json
 TAG="v0.9.6"
 RELEASE="https://github.com/0xShug0/audio.cpp/releases/download/"+TAG+"/"
 HF="https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/"
+SINGING_KEYS=("demucs","seed")
 MODELS={
+    "tts":("Qwen3-TTS-12Hz-0.6B-Base-GGUF/qwen3-tts-12hz-0.6b-base-q8_0.gguf",1991217728,"c7d0e6c9485a25ae1f6a4c0796f0023230a0051c44cbd2bd05d73770f2cce637","6f45df32f8fb283e4cfce3d3e1cb7688986fcbe6"),
     "demucs":("HTDemucs-GGUF/htdemucs-q8_0.gguf",61940768,"b0f532ac6e5f373aeb11fa0df73253251e133832d9c8b9942dc58f50bc5b4388","4c9a3098d552a0f3d9b2adc11638a11022c07d7e"),
     "seed":("SeedVC-MLX-GGUF/seed-vc-mlx-q8_0.gguf",3120809440,"17aaccb16e230a5b105187b7bccf3a67ec9899047cddac255c335c73091a88c8","6f45df32f8fb283e4cfce3d3e1cb7688986fcbe6"),
 }
@@ -73,8 +76,9 @@ def download(url,path,size,digest,cancel,progress):
         os.replace(part,path)
     finally:
         part.unlink(missing_ok=True)
-def install(root,models,mode,cancel,progress):
-    for key,(name,size,digest,rev) in MODELS.items():
+def install(root,models,mode,cancel,progress,keys=None):
+    for key in (MODELS if keys is None else keys):
+        name,size,digest,rev=MODELS[key]
         download(HF+rev+"/"+name,model_path(models,key),size,digest,cancel,progress)
     if binary(root,mode):
         return
@@ -153,7 +157,7 @@ def convert(root,models,runs,source,reference,profile,mode,cancel,stage,request=
     cli=binary(root,mode)
     if cancel.is_set():
         raise InterruptedError("Conversión cancelada")
-    if not cli or not all(model_ready(models,key) for key in MODELS):
+    if not cli or not all(model_ready(models,key) for key in SINGING_KEYS):
         raise ValueError("Instala los componentes de conversión vocal en Mis voces.")
     started=time.perf_counter()
     runs=Path(runs)
@@ -226,3 +230,47 @@ def convert(root,models,runs,source,reference,profile,mode,cancel,stage,request=
     finally:
         if folder.exists():
             shutil.rmtree(folder)
+
+
+def speak(root,models,reference,profile,mode,text,language,cancel):
+    """Clone spoken text from an authorized local reference, not an SVS model."""
+    text=text.strip()
+    if not 1<=len(text)<=400:
+        raise ValueError("Escribe una frase de hasta 400 caracteres.")
+    if language not in ("es","en","pt","fr","it","de","ja","zh","ko","ru"):
+        raise ValueError("Idioma TTS no admitido.")
+    if not profile.get("authorized") or hash_file(reference)!=profile["sha256"]:
+        raise ValueError("La referencia no es válida o autorizada.")
+    cli=binary(root,mode)
+    if not cli or not model_ready(models,"tts"):
+        raise ValueError("Instala Qwen3-TTS y audio.cpp desde Mis voces.")
+    if cancel.is_set():
+        raise InterruptedError("Síntesis cancelada")
+    target=Path(reference).parent
+    if target.name!=profile["id"]:
+        raise ValueError("Perfil inválido.")
+    folder=Path(tempfile.mkdtemp(prefix=".speech-",dir=target))
+    try:
+        output=folder/"preview.wav"
+        args=["--task","clon","--family","qwen3_tts","--model",model_path(models,"tts"),
+              "--backend","cpu" if mode=="cpu" else "cuda","--text",text,"--language",language,
+              "--voice-ref",reference,"--out",output,"--out-format","pcm16","--max-tokens","1024"]
+        transcript=profile.get("transcript","").strip()
+        if transcript:
+            args.extend(["--reference-text",transcript])
+        else:
+            args.extend(["--request-option","x_vector_only_mode=true"])
+        # Temporary log avoids retaining the input phrase in a permanent log.
+        run_cli(cli,args,cancel,folder/"speech.log")
+        with wave.open(str(output),"rb") as f:
+            if f.getsampwidth()!=2 or f.getnchannels() not in (1,2) or not 0.15<=f.getnframes()/f.getframerate()<=120:
+                raise ValueError("La síntesis no devolvió un WAV válido.")
+            if len(f.readframes(f.getnframes()))!=f.getnframes()*f.getnchannels()*2:
+                raise ValueError("Audio de prueba incompleto.")
+        if cancel.is_set():
+            raise InterruptedError("Síntesis cancelada")
+        final=target/"preview.wav"
+        os.replace(output,final)
+        return final
+    finally:
+        shutil.rmtree(folder)
