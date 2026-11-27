@@ -25,7 +25,7 @@ from . import text_engine
 from .presets import (VOICES, MOODS, AMBIENCES, STRUCTURES, LANGUAGES, INSTRUMENTS, SECTIONS,
                       INTENTIONS, COMPLEXITIES, caption as build_caption, lyric_prompt)
 from .audio_export import export_audio
-from .creative_ui import ScrollFrame, tooltip, gradient, PianoLoader
+from .creative_ui import ScrollFrame, tooltip, gradient, PianoLoader, instrument_icon
 from .hardware import recommend, recommendation_text
 from .ui_theme import create_style
 from .studio import render, write_json
@@ -52,6 +52,7 @@ class Studio:
         self.composing = False
         self.hardware = None
         self.advice_seen = set()
+        self.pending_hardware_action = None
         RUNTIME.mkdir(exist_ok=True)
         self.config = RUNTIME / "studio.json"
         self.paths = json.loads(self.config.read_text("utf-8")) if self.config.exists() else {}
@@ -112,8 +113,8 @@ class Studio:
         ttk.Label(create, text="Crear música", font=("Segoe UI", 22, "bold")).pack(anchor="w")
         split = ttk.Frame(create)
         split.pack(fill="both", expand=True, pady=8)
-        split.columnconfigure(0, weight=1)
-        split.columnconfigure(1, weight=1)
+        split.columnconfigure(0, weight=1, uniform="studio")
+        split.columnconfigure(1, weight=1, uniform="studio")
         split.rowconfigure(0, weight=1)
         form_scroll = self.form_scroll = ScrollFrame(split)
         form_scroll.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
@@ -121,7 +122,7 @@ class Studio:
         workspace = self.workspace = ttk.Frame(split, padding=(8, 0))
         workspace.grid(row=0, column=1, sticky="nsew")
         workspace.pack_propagate(False)
-        self.generate_button = ttk.Button(workspace, text="✦ Generar canción", style="Accent.TButton", command=self.generate)
+        self.generate_button = ttk.Button(workspace, text="✦ Generar canción", style="Accent.TButton", command=lambda:self.refresh_then(self.generate))
         self.generate_button.pack(fill="x", pady=(0, 5))
         instrument_row = ttk.Frame(workspace)
         instrument_row.pack(fill="x")
@@ -137,18 +138,18 @@ class Studio:
         self.instrument_panel.pack(fill="x")
         self.instrument_vars={}
         self.instrument_checks={}
+        self.instrument_icons=[]
         # Short labels fit the right-hand studio; tooltip keeps the complete instrument name.
-        aliases={"Guitarra acústica":"♪ G. acústica","Guitarra eléctrica":"♪ G. eléctrica","Requinto":"♪ Requinto",
-                 "Piano":"♬ Piano","Bajo":"♪ Bajo","Violín":"♪ Violín","Violonchelo":"♪ Chelo",
-                 "Batería":"◉ Batería","Bongó":"◉ Bongó","Congas":"◉ Congas","Güira":"◉ Güira",
-                 "Maracas":"◉ Maracas","Trompeta":"♫ Trompeta","Saxofón":"♫ Saxofón","Flauta":"♫ Flauta",
-                 "Acordeón":"♬ Acordeón","Marimba":"♬ Marimba","Sintetizador":"♬ Sintetizador",
-                 "Arpa":"♪ Arpa","Órgano":"♬ Órgano"}
+        aliases={"Guitarra acústica":"G. acúst.","Guitarra eléctrica":"G. eléct.","Violonchelo":"Chelo",
+                 "Sintetizador":"Sintetiz.","Acordeón":"Acordeón"}
         for i,name in enumerate(INSTRUMENTS):
             var=tk.BooleanVar(value=False)
             self.instrument_vars[name]=var
+            pic=instrument_icon(name,self.w)
+            self.instrument_icons.append(pic)
+            kwargs={"image":pic,"compound":"left"} if pic else {}
             check=ttk.Checkbutton(self.instrument_panel,text=aliases.get(name,name),variable=var,
-                                  command=self.update_instrument_label,style="Instrument.TCheckbutton")
+                                  command=self.update_instrument_label,style="Instrument.TCheckbutton",**kwargs)
             check.grid(row=i//3,column=i%3,sticky="w",padx=1,pady=0)
             self.instrument_checks[name]=check
             tooltip(check,name,delay=800)
@@ -549,6 +550,11 @@ class Studio:
                 self.compose_button.state(["!disabled"])
                 self.edit_button.state(["!disabled"])
                 self.status.set(text)
+                if self.action=="Detectando recursos":
+                    callback=self.pending_hardware_action
+                    self.pending_hardware_action=None
+                    if kind=="done" and text=="Recursos actualizados" and callback and not self.closing:
+                        self.w.after_idle(callback)
                 if kind == "error" and not self.closing:
                     if self.action == "Edición musical":
                         self.edit_status.configure(text=text)
@@ -995,10 +1001,7 @@ class Studio:
     def download_all(self):
         if self.busy:
             return
-        mode=self.device_mode
-        if self.hardware and not self.hardware.get("gpu"):
-            mode="cpu"
-        modes=["cpu","gpu"] if self.hardware and self.hardware.get("gpu") and mode!="cpu" else ["cpu"]
+        modes=["cpu","gpu"] if self.hardware and self.hardware.get("gpu") else ["cpu"]
         total=sum(x[1] for x in catalog().values())
         extra=sum(x[1] for device in modes for x in text_engine.ASSETS[text_engine.kind(device)])
         note=f"Todos los modelos del catálogo: hasta {total/1e9:.2f} GB. Motores de letras: hasta {extra/1e9:.2f} GB. Si el motor musical falta o está dañado, también se descargará el portable compatible. Los archivos válidos se conservan. Se requiere espacio adicional para extraer los motores. ¿Comenzar?"
@@ -1009,7 +1012,10 @@ class Studio:
             from .runtime import verify_engine
             from .models import install
             try:
-                verify_engine(self.binary())
+                binary=self.binary()
+                if not binary.is_file():
+                    raise FileNotFoundError(binary)
+                verify_engine(binary)
             except (OSError,ValueError):
                 asset=available()
                 self.events.put(("stage","Instalando motor musical"))
@@ -1037,6 +1043,18 @@ class Studio:
             return
         self.apply_recommendation(recommend(self.hardware))
         self.status.set("Recomendación seleccionada. Pulsa Guardar cambios para aplicarla.")
+
+    def refresh_then(self, callback):
+        if self.busy:
+            return
+        self.pending_hardware_action=callback
+        def work():
+            info=snapshot()
+            if self.cancel.is_set():
+                raise InterruptedError("Cancelado")
+            self.events.put(("hardware",info))
+            return "Recursos actualizados"
+        self.run(work,"Detectando recursos")
 
     def preflight(self, purpose, selected):
         if self.hardware is None:
@@ -1240,7 +1258,7 @@ class Studio:
         self.lyric_model_choice.set(LYRIC_MODELS[self.lyrics_default])
         self.lyric_notice = ttk.Label(frame, text="Selecciona el modelo de letras. Descárgalo desde Modelos.", wraplength=280)
         self.lyric_notice.pack(anchor="w", pady=6)
-        self.compose_button = ttk.Button(frame, text="✦ Generar letra", style="Accent.TButton", command=self.compose_lyrics)
+        self.compose_button = ttk.Button(frame, text="✦ Generar letra", style="Accent.TButton", command=lambda:self.refresh_then(self.compose_lyrics))
         self.compose_button.pack(fill="x", pady=8)
 
     def toggle_sections(self, _=None):
@@ -1429,8 +1447,8 @@ class Studio:
         if self.device_mode == "cpu" and seconds>30:
             if not messagebox.askyesno("Generación por CPU", "Una canción larga por CPU puede tardar mucho. Recomendamos probar 15 segundos. ¿Continuar?"):
                 return
-        if seconds > 120 or model != "dit" or self.device_mode == "cpu":
-            if not messagebox.askyesno("Configuración experimental", "Esta duración o modelo aún no tiene benchmark en tu GPU. ¿Continuar?"):
+        elif seconds > 120 or model == "sft":
+            if not messagebox.askyesno("Configuración experimental", "Esta duración o modelo aún no tiene benchmark suficiente en tu equipo. ¿Continuar?"):
                 return
         seed = secrets.randbelow(2**31)
         language = LANGUAGES[self.language.get()][0]

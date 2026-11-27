@@ -31,7 +31,7 @@ def snapshot():
         result = subprocess.run(["nvidia-smi", "-i", "0",
                                  "--query-gpu=name,driver_version,memory.total,memory.free,memory.used",
                                  "--format=csv,noheader,nounits"], capture_output=True,
-                                text=True, check=True, timeout=5)
+                                text=True, check=True, timeout=5, creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
         name, driver, total, free, used = result.stdout.strip().split(", ")
         gpu = dict(name=name, driver=driver, total_mib=int(total), free_mib=int(free), used_mib=int(used))
     except (OSError, subprocess.SubprocessError, ValueError) as exc:

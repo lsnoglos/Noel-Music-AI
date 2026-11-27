@@ -112,3 +112,43 @@ class PianoLoader(tk.Canvas):
             self.after_cancel(self.timer)
             self.timer=None
         self.phase=0
+
+
+def instrument_icon(name, master):
+    """Original tiny instrument-family drawings, no icon files or emoji fonts required."""
+    try:
+        from PIL import Image, ImageDraw, ImageTk
+    except ImportError:
+        return None
+    im=Image.new("RGBA",(40,40))
+    d=ImageDraw.Draw(im)
+    pink="#ec50b3"; purple="#8670dd"; blue="#2dc8cf"; gold="#eab14f"; white="#f7edff"
+    if name in ("Guitarra acústica","Guitarra eléctrica","Requinto","Bajo","Violín","Violonchelo"):
+        d.ellipse((4,17,25,37),fill=pink)
+        d.ellipse((13,13,29,29),fill=pink)
+        d.line((19,23,34,6),fill=gold,width=5)
+        d.line((17,23,35,4),fill=white,width=1)
+        d.ellipse((14,22,20,28),fill="#32244a")
+    elif name in ("Piano","Órgano","Sintetizador","Marimba","Acordeón"):
+        d.rounded_rectangle((3,9,37,32),radius=3,fill=purple)
+        for i in range(5):
+            x=5+i*6
+            d.rectangle((x,12,x+4,29),fill=white)
+        for i in (0,1,3):
+            x=8+i*6
+            d.rectangle((x,12,x+3,22),fill="#32244a")
+    elif name in ("Batería","Bongó","Congas","Güira","Maracas"):
+        d.rounded_rectangle((7,13,33,35),radius=3,fill=blue)
+        d.ellipse((7,7,33,20),fill=gold,outline=white,width=2)
+        d.line((12,19,26,34),fill=white,width=2)
+        d.line((26,19,13,34),fill=white,width=2)
+    elif name=="Arpa":
+        d.line((9,33,18,5,32,33,9,33),fill=gold,width=4,joint="curve")
+        for x in (15,19,23,27):
+            d.line((x,32,x,10+abs(19-x)),fill=white,width=2)
+    else:
+        d.line((7,10,25,10,25,28,12,28),fill=gold,width=5,joint="curve")
+        d.polygon(((5,4),(17,10),(5,16)),fill=gold)
+        for x in (18,23,28):
+            d.ellipse((x,7,x+3,10),fill=white)
+    return ImageTk.PhotoImage(im.resize((15,15),Image.Resampling.LANCZOS),master=master)
