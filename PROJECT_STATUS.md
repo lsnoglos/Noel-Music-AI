@@ -13,3 +13,5 @@ Fase 1, integración de desarrollo. La base de arquitectura está en 1eaf85d. El
 Etapa 2 en desarrollo. Bootstrapper WinForms, GUI Tk, instalación selectiva, reparación de modelos, control de proceso y biblioteca implementados. La publicación preview requiere que el workflow Windows compile y valide el paquete. Pendientes escucha y mediciones CUDA en la RTX 3070.
 
 Incremento de usabilidad: interfaz de cuatro secciones, asistente de composición local opcional, preferencias vocales en inglés, duración 300 s, Turbo/SFT, progreso contextual, reproductor compartido con búsqueda temporal y espectro calculado del WAV. Pendientes: prueba real de LM, SFT, duración de 300 s, audio y tema moderno en el equipo objetivo. No cambia la revisión del motor.
+
+Separación de distribución: compilación CUDA manual, actualización de aplicación y portable completo desde un motor publicado y fijado por SHA-256. Actualizador con copia de seguridad y preservación de datos; pruebas en CI y prueba real de actualización pendientes.

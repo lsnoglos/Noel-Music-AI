@@ -10,3 +10,5 @@ Arranque gráfico, entorno privado opcional, gestión de descargas, biblioteca m
 - Navegación simplificada y controles de ayuda, estilos y voces ampliados.
 - Compositor LM 0.6B opcional, selección Turbo/SFT, semillas aleatorias y 300 s experimentales.
 - Descargas individuales con progreso, reproductor compartido y espectro real; tema ttkbootstrap con fallback.
+
+- Distribución separada: actualización ligera, portable con reutilización del motor verificado y compilación CUDA manual.

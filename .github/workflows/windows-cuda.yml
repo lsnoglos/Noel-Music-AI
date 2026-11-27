@@ -1,9 +1,6 @@
-name: Noel Music AI portable
+name: Compile CUDA engine (manual)
 on:
   workflow_dispatch:
-  push:
-    branches: [main, feature/portable-studio, feature/studio-usability]
-    paths: ['.github/workflows/windows-cuda.yml', 'scripts/**', 'noel/**', 'NoelMusicAI.cmd', 'requirements-ui.txt']
 permissions:
   contents: read
 jobs:
@@ -49,4 +46,4 @@ jobs:
           REPO: ${{ github.repository }}
           REVISION: ${{ github.sha }}
         run: |
-          gh release create "preview-${REVISION}" --repo "$REPO" --target "$REVISION" --prerelease --title "Noel Music AI · Windows CUDA preview" --notes "Compilación Windows SM86 y contrato CPU comprobados. Inferencia en RTX 3070 pendiente." NoelMusicAI-Windows.zip NoelMusicAI-Windows.zip.sha256
+          gh release create "engine-${REVISION}-${GITHUB_RUN_ID}" --repo "$REPO" --target "$REVISION" --prerelease --title "Noel Music AI · Windows CUDA preview" --notes "Motor Windows SM86 compilado y contrato CPU comprobado. Actualice el manifiesto de reutilización tras validar esta revisión." NoelMusicAI-Windows.zip NoelMusicAI-Windows.zip.sha256
