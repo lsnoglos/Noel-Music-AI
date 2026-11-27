@@ -151,7 +151,10 @@ class Recorder:
 
 def import_audio(source,destination):
     """Bound decoding to five minutes; the source is never changed."""
-    import miniaudio
+    try:
+        import miniaudio
+    except ImportError as exc:
+        raise RuntimeError("Falta el decodificador MP3/WAV. Aplica la actualización oficial con ui-wheels y vuelve a abrir Noel Music AI.") from exc
     source=Path(source)
     if source.suffix.lower() not in (".mp3",".wav") or source.stat().st_size>128*1024**2:
         raise ValueError("Selecciona MP3 o WAV de hasta 128 MiB.")

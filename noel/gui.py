@@ -31,6 +31,7 @@ from .creative_ui import ScrollFrame, tooltip, gradient, PianoLoader, instrument
 from .hardware import recommend, operation_warning
 from .creative_ui import center_dialog, draw_play_state
 from .ui_theme import create_style
+from . import ui_theme
 from .studio import render, write_json
 from . import editor, voice_profiles, voice_engine
 
@@ -287,6 +288,8 @@ class Studio:
         settings = settings_scroll.inner
         ttk.Label(settings, text="Configuración", font=("Segoe UI", 22, "bold")).pack(anchor="w")
         ttk.Label(settings, text="Tema moderno ttkbootstrap" if self.modern else "Tema básico · ttkbootstrap no disponible").pack(anchor="w", pady=4)
+        if ui_theme.last_error:
+            ttk.Label(settings,text="Dependencias: "+ui_theme.last_error,wraplength=650,style="Warn.TLabel").pack(anchor="w",pady=4)
         ttk.Label(settings, text="Procesamiento y modelos predeterminados", font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(10,4))
         self.device_setting = self.combo(settings, "Procesador", list(DEVICES.values()), "CPU: procesamiento local lento. GPU: CUDA. CPU + GPU: ACE-Step usa GPU y Qwen reparte capas.")
         self.device_setting.set(DEVICES[self.device_mode])
@@ -1377,6 +1380,11 @@ class Studio:
 
     def import_voice_sample(self):
         if self.busy or self.recording.active:
+            return
+        try:
+            import miniaudio
+        except ImportError:
+            messagebox.showerror("Decodificador de audio pendiente","No está disponible miniaudio. Cierra Noel Music AI y aplica el paquete oficial de actualización, con la carpeta ui-wheels incluida. Consulta .runtime/ui-dependencies.log. "+ui_theme.last_error)
             return
         path=filedialog.askopenfilename(filetypes=[("Audio MP3 / WAV","*.mp3 *.wav")])
         if not path:

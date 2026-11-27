@@ -58,6 +58,9 @@ def make_update(output):
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         app_payload(root/"app")
+        if sys.platform == "win32":
+            from noel.ui_theme import install_private
+            install_private(root/"app",root/"check-runtime")
         shutil.copy2(ROOT/"scripts/apply-update.ps1", root/"apply-update.ps1")
         shutil.copy2(ROOT/"scripts/apply_update.py", root/"apply_update.py")
         (root/"Actualizar.cmd").write_text('@echo off\r\npowershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0apply-update.ps1"\r\nif errorlevel 1 pause\r\n', encoding="ascii")

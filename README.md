@@ -79,3 +79,6 @@ Qwen3-TTS 0.6B Base Q8 (1.99 GB) es opcional e independiente de Seed-VC/HTDemucs
 Prepara MP3/WAV o graba, navega por la onda, selecciona un fragmento de hasta 30 s (mínimo 5 s), opcionalmente extrae voz con HTDemucs, prueba frases y guarda solo cuando te convenza. Los borradores son temporales y las frases de cada perfil se guardan independientemente en WAV + JSON. Las pruebas antiguas sin texto se conservan como legado. Modelos de voz y motor se instalan desde Modelos; sustitución de cantante permanece en Editor musical. MP3 usa miniaudio local; no requiere FFmpeg. Límite de importación 5 minutos.
 
 El actualizador incluye miniaudio en el wheelhouse y comprueba que esté importable al iniciar; no se necesita una instalación global. La transcripción se mantiene oculta como opción avanzada, y la reproducción de la muestra usa el reproductor compartido.
+
+### Reparación de dependencias de audio
+El portable instala bibliotecas desde ui-wheels en una carpeta privada de .runtime identificada por Python y hash de requirements-ui.txt. Verifica imports en un intérprete limpio y registra fallos en .runtime/ui-dependencies.log. El tema gráfico no se desactiva solamente por faltar miniaudio. Usa los ZIP de artefactos oficiales, no el ZIP del código fuente. El empaquetado Windows verifica la instalación offline real antes de publicar.

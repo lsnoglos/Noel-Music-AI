@@ -33,3 +33,5 @@ Mis voces: perfil de referencia local, grabación/importación WAV, selección e
 Laboratorio TTS: Qwen3-TTS 0.6B Q8 con SHA-256, transcripción opcional, frase de prueba y exportación WAV; géneros ampliados y condicionamiento estructurado. Pendiente inferencia real, compatibilidad CPU/CUDA, seguimiento de tipos vocales (niño/tenor/etc.) y comparación perceptual.
 
 Reorganización de Mis voces: borrador antes de guardar, MP3/WAV, navegación de muestra, fragmento y separación opcional, historial de frases por perfil, instalaciones centralizadas. Pruebas físicas de grabación, TTS y extracción aún necesarias.
+
+Corrección de dependencias tras error No module named miniaudio: entorno privado versionado, instalación offline limpia, comprobación de importación en proceso aislado y registro de error. Pendiente reproducir en instalación del usuario.
