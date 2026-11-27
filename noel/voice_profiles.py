@@ -51,9 +51,12 @@ def hash_file(path):
     with Path(path).open("rb") as f:
         return hashlib.file_digest(f,"sha256").hexdigest()
 
-def create_profile(root,source,name,consent,kind="Hablada"):
+def create_profile(root,source,name,consent,kind="Hablada",transcript=""):
     if not consent:
         raise ValueError("Confirma que es tu voz o tienes autorización.")
+    transcript=transcript.strip()
+    if len(transcript)>2000:
+        raise ValueError("La transcripción supera 2000 caracteres.")
     name=name.strip()
     if not name or len(name)>80 or any(ord(c)<32 for c in name):
         raise ValueError("Escribe un nombre de perfil válido.")
@@ -78,7 +81,7 @@ def create_profile(root,source,name,consent,kind="Hablada"):
         path=folder/"reference.wav"
         save_pcm(path,mono)
         data=dict(id=ident,name=name,kind=kind,seconds=seconds,authorized=True,
-                  sha256=hash_file(path),peak=peak/32768,rms=rms/32768)
+                  sha256=hash_file(path),peak=peak/32768,rms=rms/32768,transcript=transcript)
         write_json(folder/"profile.json",data)
         folder.rename(root/ident)
         return data

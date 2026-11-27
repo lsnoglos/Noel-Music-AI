@@ -95,6 +95,10 @@ def main():
                 studio.sync_card_playback(None)
                 studio.show_page("Mis voces")
                 assert studio.voice_list.winfo_exists()
+                assert studio.voice_test_text.winfo_exists()
+                assert studio.voice_speak_button.winfo_exists()
+                assert "Heavy metal" in studio.genre["values"] and "Ópera" in studio.genre["values"]
+                assert "Música instrumental" not in studio.genre["values"]
                 from noel.voice_profiles import create_profile,save_pcm
                 import array
                 sample=Path(tmp)/"ref.wav"

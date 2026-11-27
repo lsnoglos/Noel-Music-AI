@@ -3,7 +3,7 @@ import unittest
 import wave
 from pathlib import Path
 from unittest.mock import Mock
-from noel.presets import caption, lyric_prompt
+from noel.presets import caption, lyric_prompt, vocal_lyrics
 from noel.studio import render
 from noel.audio_export import export_audio
 
@@ -16,6 +16,14 @@ class Creative(unittest.TestCase):
         self.assertIn("[Intro], [Verse 1], [Chorus], [Chorus], [Outro]", text)
         self.assertIn("social protest", text)
         self.assertIn("piano, violin", caption("pop", "Natural", "Libre", "Tenor", "", ["Piano","Violín"]))
+
+    def test_independent_dimensions(self):
+        prompt=caption("heavy metal","Espiritual","Nocturno","Tenor","")
+        for s in ("heavy metal","tenor","contemplative","late-night"):
+            self.assertIn(s,prompt)
+        self.assertEqual(vocal_lyrics("[Verse 1]\nHola","Tenor"),"[Verse 1 - tenor lead vocal]\nHola")
+        self.assertEqual(vocal_lyrics("[Verse - female vocal]\nHola","Tenor"),"[Verse - female vocal]\nHola")
+        self.assertEqual(vocal_lyrics("Hola","Automática"),"Hola")
 
     def test_vocal_language_reaches_render(self):
         engine = Mock()

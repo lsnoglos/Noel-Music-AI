@@ -59,3 +59,22 @@ class VoiceTests(unittest.TestCase):
         wav=root/"ref.wav"
         save_pcm(wav,array.array("h",[1200,-1200]*44100*3))
         return wav
+
+    def test_speech_adapter(self):
+        import threading
+        from unittest.mock import patch
+        from noel.voice_engine import speak
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            p=create_profile(root/"voices",self.make_sample(root),"Mi voz",True,transcript="Texto real")
+            ref=reference(root/"voices",p)
+            calls=[]
+            def simulate(cli,args,cancel,log):
+                calls.extend(args)
+                save_pcm(args[args.index("--out")+1],array.array("h",[1000]*24000),24000)
+            with patch("noel.voice_engine.binary",return_value=root/"dummy.exe"),patch("noel.voice_engine.model_ready",return_value=True),patch("noel.voice_engine.run_cli",side_effect=simulate):
+                result=speak(root,root/"models",ref,p,"cpu","Hola mundo","es",threading.Event())
+            self.assertTrue(result.is_file())
+            self.assertIn("Texto real",calls)
+            self.assertIn("Hola mundo",calls)
+            self.assertIn("qwen3_tts",calls)
