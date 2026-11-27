@@ -27,3 +27,5 @@ Espacio creativo: panel de generación fijo, instrumentos visibles, duración 60
 Interfaz compacta y avisos separados. Stable Audio 3 Small Music permanece en evaluación: motor Windows LiteRT, instrumental hasta 120 s, licencia y dependencias por verificar antes de incluir descargas. No se altera ACE-Step. Pruebas Windows pendientes.
 
 Corrección adicional: desplazamiento auxiliar solo si no caben los campos y botón de composición fijo; aviso específico de edición con CPU o memoria limitada.
+
+Mis voces: perfil de referencia local, grabación/importación WAV, selección en creación y edición, conversión de canciones existentes; integración experimental de audio.cpp/HTDemucs/Seed-VC con descargas verificadas. Pendiente validar micrófono Windows, contrato real de CLI, formato de stems e inferencia GPU/CPU. MIDI y motores instrumentales ligeros pendientes.
