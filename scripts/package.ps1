@@ -31,7 +31,12 @@ Copy-Item .runtime/acestep.cpp/ggml/LICENSE "$dest/LICENSE-ggml.txt"
 Get-ChildItem $dest -File | ForEach-Object {
     [pscustomobject]@{name=$_.Name;sha256=(Get-FileHash $_.FullName).Hash;bytes=$_.Length}
 } | ConvertTo-Json | Set-Content portable/engine-manifest.json -Encoding utf8
-Copy-Item noel,scripts,docs,README.md,NoelMusicAI.cmd,THIRD_PARTY_NOTICES.md,LICENSE portable -Recurse
+Copy-Item noel,scripts,docs,README.md,NoelMusicAI.cmd,THIRD_PARTY_NOTICES.md,LICENSE,requirements-ui.txt portable -Recurse
+New-Item -ItemType Directory -Force portable/ui-wheels | Out-Null
+foreach ($py in @('311','312','313','314')) {
+    python -m pip download --only-binary=:all: --platform win_amd64 --implementation cp --python-version $py --dest portable/ui-wheels -r requirements-ui.txt
+    if ($LASTEXITCODE) { throw "GUI wheel download failed for Python $py" }
+}
 python -m unittest discover -v
 if ($LASTEXITCODE) { throw 'Unit tests failed' }
 python -m tests.server_contract (Resolve-Path "$dest/ace-server.exe")

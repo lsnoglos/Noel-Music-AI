@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from .diagnostics import PeakMonitor
-from .models import MODELS, REVISION
+from .models import MODELS, OPTIONAL, REVISION
 
 
 def write_json(path, data):
@@ -17,14 +17,20 @@ def write_json(path, data):
     temp.replace(path)
 
 
-def render(engine, props, root, caption, lyrics, seconds, seed):
+def render(engine, props, root, caption, lyrics, seconds, seed, model="dit"):
     if not caption.strip() or len(caption) > 8000 or len(lyrics) > 16000:
         raise ValueError("Revise la descripción y la extensión de la letra.")
-    if not 1 <= seconds <= 120 or not 0 <= seed < 2**31:
-        raise ValueError("Use de 1 a 120 segundos y una semilla entre 0 y 2147483647.")
+    if not 1 <= seconds <= 300 or not 0 <= seed < 2**31:
+        raise ValueError("Use de 1 a 300 segundos y una semilla entre 0 y 2147483647.")
+    if model not in ("dit", "sft"):
+        raise ValueError("Modelo musical no admitido.")
+    name = MODELS["dit"][0] if model == "dit" else OPTIONAL["sft"][0]
+    steps = 8 if model == "dit" else 50
+    if model != "dit" and name not in props.get("models", {}).get("dit", []):
+        raise ValueError("Instale el modelo SFT antes de seleccionarlo.")
     payload = dict(caption=caption, lyrics=lyrics or "[Instrumental]", vocal_language="es" if lyrics else "unknown",
                    duration=seconds, seed=seed, task_type="text2music", output_format="wav16",
-                   inference_steps=8, synth_batch_size=1, synth_model=MODELS["dit"][0], vae=MODELS["vae"][0])
+                   inference_steps=steps, synth_batch_size=1, synth_model=name, vae=MODELS["vae"][0])
     root.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     wav, latent, duration = engine.generate(payload)
@@ -37,7 +43,7 @@ def render(engine, props, root, caption, lyrics, seconds, seed):
         elapsed = time.perf_counter() - started
         result = dict(version=final.name, seconds=seconds, actual_seconds=duration, total_s=elapsed,
                       request_and_transfer_s=received-started, write_audio_s=elapsed-(received-started),
-                      rtf=elapsed/duration, model=payload["synth_model"], steps=8, seed=seed)
+                      rtf=elapsed/duration, model=payload["synth_model"], steps=steps, seed=seed)
         write_json(folder / "version.json", dict(metrics=result, request=payload, props=props,
                    models_revision=REVISION, ai_generated=True, wav_sha256=hashlib.sha256(wav).hexdigest(),
                    latent_sha256=hashlib.sha256(latent).hexdigest()))

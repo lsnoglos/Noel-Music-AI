@@ -33,3 +33,17 @@ Consulte el [protocolo de medición](docs/benchmarks/PROTOCOL.md), los [resultad
 ## Desarrollo
 
 Python 3.11 o superior, biblioteca estándar. Desde la raíz: `python -m unittest discover -v`. Prueba contra el servidor compilado: `python -m tests.server_contract RUTA_AL_BINARIO`. El motor y los pesos se instalan por separado. [Investigación](docs/research/ENGINE_EVALUATION.md) · [Arquitectura](docs/architecture/SYSTEM_DESIGN.md) · [Hoja de ruta](docs/ROADMAP.md).
+
+## Mejoras de uso (rama de desarrollo)
+
+La interfaz reúne Inicio, Crear música, Modelos y Configuración. Las descargas se gestionan por componente; los tres pesos básicos existentes siguen siendo necesarios. Los modelos LM 0.6B (709.85 MB) y SFT Q8 son opcionales. El compositor local usa /lm inspire y la letra permanece editable. Las preferencias vocales son condicionamiento textual, no una garantía de identidad o género vocal. El perfil Turbo Q8 de 8 pasos sigue predeterminado. Hasta 300 s y SFT son experimentales hasta comprobar la RTX 3070. El paquete Windows incorpora ruedas de ttkbootstrap/Pillow para una instalación privada sin conexión; si se ejecuta solo el código fuente sin esas bibliotecas se usa Tk como alternativa. Para desarrollo: python -m pip install -r requirements-ui.txt (preferentemente en un entorno virtual).
+
+### Probar el código nuevo sobre un portable anterior
+
+Cierra Noel Music AI. Haz una copia de seguridad. Extrae la rama de desarrollo en una carpeta separada y copia únicamente noel/, requirements-ui.txt y scripts/ en la instalación portable existente, conservando engine/, .runtime/, runs/ y engine-manifest.json. Para activar el tema en esta actualización de código fuente, instala las dependencias en la carpeta privada correspondiente a tu versión de Python, por ejemplo con Python 3.11: py -3.11 -m pip install --target ".runtime/ui-3.11" -r requirements-ui.txt. Después abre NoelMusicAI.cmd. La alternativa es utilizar el nuevo paquete portable cuando se publique.
+
+## Distribución y actualizaciones ligeras
+
+El workflow **Noel Music AI application packages** ejecuta pruebas y publica dos paquetes: NoelMusicAI-Update.zip (aplicación y ruedas de interfaz, sin motor ni modelos) y NoelMusicAI-Windows.zip (portable completo). El motor se reutiliza desde la publicación fijada en scripts/engine-base.json, verificando su tamaño, SHA-256, revisión e inventario. No se instala CUDA Toolkit para empaquetar cambios de interfaz. Para actualizar una instalación portable existente, cierra Noel y el motor, extrae el ZIP de actualización en otra carpeta y abre Actualizar.cmd; selecciona la instalación habitual. El instalador valida los archivos y conserva engine/, .runtime/ y runs/, incluyendo canciones, modelos y configuración. Conserva una copia de los archivos sustituidos en .noel-update-backup-*. No borres la copia hasta comprobar el funcionamiento. Verifica el SHA-256 publicado del ZIP antes de extraerlo.
+
+El workflow **Compile CUDA engine (manual)** se ejecuta solo cuando se necesita reconstruir el motor. Tras validar una compilación nueva, actualiza scripts/engine-base.json con la revisión, URL, tamaño y hash del paquete publicado. Si la revisión no coincide, el empaquetado falla en lugar de usar un motor incompatible.

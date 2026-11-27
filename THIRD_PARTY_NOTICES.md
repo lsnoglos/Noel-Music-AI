@@ -11,3 +11,7 @@ El cliente propio usa Python 3.11+ y su biblioteca estándar. Para construir se 
 La licencia de código, los términos de pesos y bancos de voz, los derechos de grabaciones y los datos de entrenamiento tienen procedencias distintas. Revisar esos inventarios por componente antes de distribuir una versión empaquetada o perfiles vocales. El propietario mantiene la decisión sobre la licencia de publicación del cliente propio.
 
 El bootstrapper utiliza PowerShell y WinForms del sistema. Python 3.14.10 x64 se obtiene de python.org con autorización, SHA-256 y Authenticode. Tk forma parte de la instalación seleccionada. El paquete Windows incluye DLL necesarias de GGML, CUDA y MSVC. Los controladores de GPU pertenecen al sistema.
+
+- ttkbootstrap 2.2.7 (MIT): https://pypi.org/project/ttkbootstrap/2.2.7/
+- Pillow 12.2.0 (HPND): https://pypi.org/project/pillow/12.2.0/
+  Las ruedas redistribuidas incluyen sus metadatos y avisos de licencia.

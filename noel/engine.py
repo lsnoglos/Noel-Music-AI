@@ -11,7 +11,7 @@ from email.message import Message
 from .models import MODELS
 
 ENGINE = "973517be024ff8b6bbd50e0adc9e308ab2ed71b3"
-MAX_BODY = 40 * 1024 * 1024
+MAX_BODY = 80 * 1024 * 1024  # 300 s stereo PCM16 + latent + multipart overhead
 
 
 def unpack(content_type, data, seconds):
@@ -79,8 +79,24 @@ class Engine:
             raise ValueError("Use una carpeta dedicada: el motor selecciona el primer embedding.")
         return props
 
+
     def generate(self, payload, timeout=900):
-        job = self.metadata("POST", "/synth", json.dumps(payload).encode())["id"]
+        return unpack(*self.job("/synth", payload, timeout), payload["duration"])
+
+    def compose(self, payload, timeout=300):
+        _, data = self.job("/lm", payload, timeout)
+        result = json.loads(data)
+        if not isinstance(result, list) or len(result) != 1 or not isinstance(result[0], dict):
+            raise ValueError("Respuesta inesperada del compositor.")
+        lyrics = result[0].get("lyrics")
+        if not isinstance(lyrics, str) or not lyrics.strip() or lyrics.strip() == "[Instrumental]":
+            raise ValueError("El compositor no devolvió una letra utilizable.")
+        if len(lyrics) > 16000:
+            raise ValueError("La letra generada supera el límite del editor.")
+        return lyrics
+
+    def job(self, endpoint, payload, timeout):
+        job = self.metadata("POST", endpoint, json.dumps(payload).encode())["id"]
         if not isinstance(job, str) or not re.fullmatch(r"[0-9a-f]{16}", job):
             raise ValueError("Identificador de trabajo incorrecto.")
         print(f"Trabajo {job} recibido por el motor.", flush=True)
@@ -92,7 +108,7 @@ class Engine:
                     raise InterruptedError("Cancelación solicitada.")
                 status = self.metadata("GET", path)["status"]
                 if status == "done":
-                    return unpack(*self.request("GET", path + "&result=1"), payload["duration"])
+                    return self.request("GET", path + "&result=1")
                 if status != "running":
                     raise RuntimeError(f"Estado del trabajo {job}: {status}. Consulte la consola del motor.")
                 time.sleep(0.5)
