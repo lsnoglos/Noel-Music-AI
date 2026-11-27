@@ -78,3 +78,21 @@ class VoiceTests(unittest.TestCase):
             self.assertIn("Texto real",calls)
             self.assertIn("Hola mundo",calls)
             self.assertIn("qwen3_tts",calls)
+
+    def test_history_and_commit(self):
+        from noel.voice_profiles import save_phrase,phrase_history,commit_draft,clip_reference
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            sample=self.make_sample(root)
+            draft=root/"draft"
+            p=create_profile(draft,sample,"Borrador",True)
+            folder=draft/p["id"]
+            save_phrase(folder,sample,"Primera","es")
+            save_phrase(folder,sample,"Segunda","en")
+            self.assertEqual(len(phrase_history(folder)),2)
+            saved=commit_draft(root/"voices",draft,p,"Mi voz")
+            self.assertEqual(saved["name"],"Mi voz")
+            self.assertEqual({x["text"] for x in phrase_history(root/"voices"/p["id"])},{"Primera","Segunda"})
+            self.assertTrue((folder/"reference.wav").is_file())
+            clip_reference(sample,root/"clip.wav",100)
+            self.assertTrue((root/"clip.wav").is_file())

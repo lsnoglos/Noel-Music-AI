@@ -1,3 +1,4 @@
 ttkbootstrap==2.2.7
 Pillow==12.2.0
 lameenc==1.9.0
+miniaudio==1.73

@@ -26,3 +26,5 @@ Arranque gráfico, entorno privado opcional, gestión de descargas, biblioteca m
 - Mis voces: perfiles privados reutilizables y conversión vocal experimental no destructiva.
 
 - Laboratorio de voz hablada opcional con Qwen3-TTS; géneros ampliados, ambiente acústico diferenciado, guía vocal en caption y letra.
+
+- Mis voces: flujo de prueba previo al guardado, importación MP3, historial persistente y modelos centralizados.

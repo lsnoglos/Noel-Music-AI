@@ -74,3 +74,6 @@ Desde Editor musical, Sustituir cantante sin regenerar música aplica la convers
 
 ### Laboratorio de voz
 Qwen3-TTS 0.6B Base Q8 (1.99 GB) es opcional e independiente de Seed-VC/HTDemucs. Selecciona un perfil, escribe una frase y sintetiza WAV local; una transcripción exacta opcional habilita referencia de audio y texto, sin ella usa modo x-vector. No garantiza acento, ritmo de habla o identidad exactos. Conserva la referencia original y una prueba por perfil. Los géneros se amplían; Instrumental queda como check único. Las dimensiones musicales se expresan explícitamente en el caption y los tags vocales genéricos se refuerzan sin alterar palabras ni sobrescribir etiquetas explícitas. No son controles garantizados; pruebas de escucha pendientes.
+
+### Espacio de voces
+Prepara MP3/WAV o graba, navega por la onda, selecciona un fragmento de hasta 30 s (mínimo 5 s), opcionalmente extrae voz con HTDemucs, prueba frases y guarda solo cuando te convenza. Los borradores son temporales y las frases de cada perfil se guardan independientemente en WAV + JSON. Las pruebas antiguas sin texto se conservan como legado. Modelos de voz y motor se instalan desde Modelos; sustitución de cantante permanece en Editor musical. MP3 usa miniaudio local; no requiere FFmpeg. Límite de importación 5 minutos.

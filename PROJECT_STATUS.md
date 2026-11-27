@@ -31,3 +31,5 @@ Corrección adicional: desplazamiento auxiliar solo si no caben los campos y bot
 Mis voces: perfil de referencia local, grabación/importación WAV, selección en creación y edición, conversión de canciones existentes; integración experimental de audio.cpp/HTDemucs/Seed-VC con descargas verificadas. Pendiente validar micrófono Windows, contrato real de CLI, formato de stems e inferencia GPU/CPU. MIDI y motores instrumentales ligeros pendientes.
 
 Laboratorio TTS: Qwen3-TTS 0.6B Q8 con SHA-256, transcripción opcional, frase de prueba y exportación WAV; géneros ampliados y condicionamiento estructurado. Pendiente inferencia real, compatibilidad CPU/CUDA, seguimiento de tipos vocales (niño/tenor/etc.) y comparación perceptual.
+
+Reorganización de Mis voces: borrador antes de guardar, MP3/WAV, navegación de muestra, fragmento y separación opcional, historial de frases por perfil, instalaciones centralizadas. Pruebas físicas de grabación, TTS y extracción aún necesarias.

@@ -97,6 +97,10 @@ def main():
                 assert studio.voice_list.winfo_exists()
                 assert studio.voice_test_text.winfo_exists()
                 assert studio.voice_speak_button.winfo_exists()
+                assert studio.phrase_list.winfo_exists()
+                assert studio.save_voice_button.instate(["disabled"])
+                assert not studio.voice_list.curselection()
+                assert set(studio.voice_model_states)=={"tts","demucs","seed"}
                 assert "Heavy metal" in studio.genre["values"] and "Ópera" in studio.genre["values"]
                 assert "Música instrumental" not in studio.genre["values"]
                 from noel.voice_profiles import create_profile,save_pcm

@@ -1,5 +1,7 @@
 """Private reusable, authorized voice references; no training or network access."""
 import array
+import os
+import datetime
 import hashlib
 import json
 import math
@@ -145,3 +147,92 @@ class Recorder:
                 self.api.send("close noelrecorder")
             finally:
                 self.active=False
+
+
+def import_audio(source,destination):
+    """Bound decoding to five minutes; the source is never changed."""
+    import miniaudio
+    source=Path(source)
+    if source.suffix.lower() not in (".mp3",".wav") or source.stat().st_size>128*1024**2:
+        raise ValueError("Selecciona MP3 o WAV de hasta 128 MiB.")
+    stream=miniaudio.stream_file(str(source),output_format=miniaudio.SampleFormat.SIGNED16,nchannels=2,sample_rate=44100)
+    frames=0
+    try:
+        with wave.open(str(destination),"wb") as f:
+            f.setparams((2,2,44100,0,"NONE","not compressed"))
+            for block in stream:
+                frames+=len(block)//2
+                if frames>300*44100:
+                    raise ValueError("El audio supera cinco minutos.")
+                f.writeframesraw(block.tobytes())
+        if frames<5*44100:
+            raise ValueError("La muestra debe durar al menos cinco segundos.")
+        return frames/44100
+    except Exception:
+        Path(destination).unlink(missing_ok=True)
+        raise
+    finally:
+        stream.close()
+
+def clip_reference(source,destination,start):
+    with wave.open(str(source),"rb") as f:
+        rate=f.getframerate()
+        total=f.getnframes()
+        pos=max(0,min(round(start*rate),max(0,total-5*rate)))
+        f.setpos(pos)
+        data=f.readframes(min(30*rate,total-pos))
+        with wave.open(str(destination),"wb") as out:
+            out.setparams(f.getparams())
+            out.writeframes(data)
+
+def phrase_history(folder):
+    folder=Path(folder)
+    items=[]
+    for path in (folder/"phrases").glob("*/phrase.json"):
+        try:
+            item=json.loads(path.read_text("utf-8"))
+            if item["id"]!=path.parent.name or not (path.parent/"audio.wav").is_file():
+                continue
+            items.append(dict(item,path=path.parent/"audio.wav"))
+        except (OSError,ValueError,KeyError,TypeError):
+            continue
+    items.sort(key=lambda x:x.get("created",""),reverse=True)
+    if (folder/"preview.wav").is_file():
+        items.append(dict(id="legacy",text="Prueba anterior (texto no registrado)",language="",path=folder/"preview.wav"))
+    return items
+
+def save_phrase(folder,audio,text,language):
+    root=Path(folder)/"phrases"
+    root.mkdir(exist_ok=True)
+    ident=uuid.uuid4().hex
+    stage=Path(tempfile.mkdtemp(prefix=".pending-",dir=root))
+    try:
+        shutil.copyfile(audio,stage/"audio.wav")
+        write_json(stage/"phrase.json",dict(id=ident,text=text,language=language,created=datetime.datetime.now(datetime.timezone.utc).isoformat()))
+        stage.rename(root/ident)
+        return root/ident/"audio.wav"
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)
+
+def commit_draft(root,draft,profile,name):
+    name=name.strip()
+    if not name or len(name)>80 or any(ord(c)<32 for c in name):
+        raise ValueError("Escribe un nombre de perfil válido.")
+    if not phrase_history(Path(draft)/profile["id"]):
+        raise ValueError("Genera una frase de prueba antes de guardar el perfil.")
+    if any(p["name"].casefold()==name.casefold() for p in profiles(root)):
+        raise ValueError("Ya existe un perfil con ese nombre.")
+    reference(draft,profile)
+    root=Path(root)
+    root.mkdir(parents=True,exist_ok=True)
+    stage=Path(tempfile.mkdtemp(prefix=".pending-",dir=root))
+    try:
+        shutil.copytree(Path(draft)/profile["id"],stage,dirs_exist_ok=True)
+        saved=dict(profile,name=name)
+        write_json(stage/"profile.json",saved)
+        stage.rename(root/profile["id"])
+        return saved
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)

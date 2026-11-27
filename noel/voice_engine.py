@@ -12,7 +12,7 @@ import uuid
 import zipfile
 import wave
 from pathlib import Path
-from .voice_profiles import read_pcm,resample,save_pcm,hash_file
+from .voice_profiles import read_pcm,resample,save_pcm,hash_file,save_phrase
 from .studio import write_json
 
 TAG="v0.9.6"
@@ -158,7 +158,7 @@ def convert(root,models,runs,source,reference,profile,mode,cancel,stage,request=
     if cancel.is_set():
         raise InterruptedError("Conversión cancelada")
     if not cli or not all(model_ready(models,key) for key in SINGING_KEYS):
-        raise ValueError("Instala los componentes de conversión vocal en Mis voces.")
+        raise ValueError("Instala los componentes de conversión vocal en Modelos.")
     started=time.perf_counter()
     runs=Path(runs)
     runs.mkdir(parents=True,exist_ok=True)
@@ -243,7 +243,7 @@ def speak(root,models,reference,profile,mode,text,language,cancel):
         raise ValueError("La referencia no es válida o autorizada.")
     cli=binary(root,mode)
     if not cli or not model_ready(models,"tts"):
-        raise ValueError("Instala Qwen3-TTS y audio.cpp desde Mis voces.")
+        raise ValueError("Instala Qwen3-TTS y audio.cpp desde Modelos.")
     if cancel.is_set():
         raise InterruptedError("Síntesis cancelada")
     target=Path(reference).parent
@@ -269,8 +269,21 @@ def speak(root,models,reference,profile,mode,text,language,cancel):
                 raise ValueError("Audio de prueba incompleto.")
         if cancel.is_set():
             raise InterruptedError("Síntesis cancelada")
-        final=target/"preview.wav"
-        os.replace(output,final)
-        return final
+        return save_phrase(target,output,text,language)
     finally:
         shutil.rmtree(folder)
+
+
+def isolate_reference(root,models,mode,source,folder,cancel):
+    cli=binary(root,mode)
+    if not cli or not model_ready(models,"demucs"):
+        raise ValueError("Instala HTDemucs desde Modelos para extraer la voz.")
+    stems=Path(folder)/"reference-stems"
+    stems.mkdir()
+    run_cli(cli,["--task","sep","--family","htdemucs","--model",model_path(models,"demucs"),
+                 "--backend","cpu" if mode=="cpu" else "cuda","--audio",source,
+                 "--out-dir",stems,"--out-format","pcm16"],cancel,Path(folder)/"separation.log")
+    matches=[p for p in stems.rglob("*.wav") if p.stem.lower()=="vocals"]
+    if len(matches)!=1:
+        raise ValueError("No se encontró una pista vocal única.")
+    return matches[0]
