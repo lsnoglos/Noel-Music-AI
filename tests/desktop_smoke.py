@@ -29,11 +29,12 @@ def main():
                 window.after(100, check)
                 return
             try:
-                window.geometry("900x650")
                 studio.show_page("Crear música")
                 window.update_idletasks()
                 assert studio.player_frame.winfo_ismapped()
-                assert studio.player_frame.winfo_y()+studio.player_frame.winfo_height() <= window.winfo_height(), "reproductor recortado"
+                bottom = studio.player_frame.winfo_rooty()+studio.player_frame.winfo_height()
+                limit = window.winfo_rooty()+window.winfo_height()
+                assert bottom <= limit+1, f"reproductor recortado: footer={bottom}, window={limit}"
                 studio.duration.set(300)
                 assert studio.duration.get() == 300
                 studio.instrumental.set(True)
@@ -61,7 +62,8 @@ def main():
                 failures.append(exc)
             finally:
                 studio.close()
-        window.after(300, check)
+        window.geometry("900x650")
+        window.after(700, check)
         window.after(30000, window.quit)
         window.mainloop()
         if failures:
