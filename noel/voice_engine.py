@@ -151,6 +151,8 @@ def mix_stems(instrumental,vocal):
     return array.array("h",(round((int(instrumental[i])+(int(vocal[i]) if i<len(vocal) else 0))*gain) for i in range(n)))
 def convert(root,models,runs,source,reference,profile,mode,cancel,stage,request=None,title=None):
     cli=binary(root,mode)
+    if cancel.is_set():
+        raise InterruptedError("Conversión cancelada")
     if not cli or not all(model_ready(models,key) for key in MODELS):
         raise ValueError("Instala los componentes de conversión vocal en Mis voces.")
     started=time.perf_counter()
@@ -171,13 +173,19 @@ def convert(root,models,runs,source,reference,profile,mode,cancel,stage,request=
         stems=folder/"stems"
         stems.mkdir()
         stage("Separando voz e instrumental")
-        run_cli(cli,["--task","sep","--family","htdemucs","--model",model_path(models,"demucs"),"--backend",backend,"--audio",mixture,"--out-dir",stems],cancel,Path(root)/"voice-separation.log")
+        run_cli(cli,["--task","sep","--family","htdemucs","--model",model_path(models,"demucs"),"--backend",backend,"--audio",mixture,"--out-dir",stems,"--out-format","pcm16"],cancel,Path(root)/"voice-separation.log")
+        if cancel.is_set():
+            raise InterruptedError("Conversión cancelada")
         def stem(name):
             found=[p for p in stems.rglob("*.wav") if p.stem.lower()==name]
             if len(found)!=1:
                 raise ValueError("No se encontró una pista "+name+" única en la salida del separador.")
             return found[0]
         vocal=stem("vocals")
+        vocal_pcm,_,_=read_pcm(vocal)
+        if max(abs(min(vocal_pcm)),abs(max(vocal_pcm)))<100:
+            raise ValueError("No se detectó una pista vocal con nivel suficiente para convertir.")
+        del vocal_pcm
         backing=load_stereo(stem("drums"))
         # Accumulate at 32 bits; retain instrumental as separate artifact.
         accum=array.array("i",backing)
@@ -194,9 +202,11 @@ def convert(root,models,runs,source,reference,profile,mode,cancel,stage,request=
         instrumental=array.array("h",(round(x*gain) for x in accum))
         del accum
         save_pcm(folder/"instrumental.wav",instrumental,44100,2)
+        if cancel.is_set():
+            raise InterruptedError("Conversión cancelada")
         stage("Convirtiendo canto con Seed-VC")
         converted=folder/"converted.wav"
-        run_cli(cli,["--task","svc","--family","seed_vc","--model",model_path(models,"seed"),"--backend",backend,"--task-route","v1_svc","--audio",vocal,"--voice-ref",reference,"--out",converted,"--num-inference-steps","30","--request-option","auto_f0_adjust=false"],cancel,Path(root)/"voice-conversion.log")
+        run_cli(cli,["--task","svc","--family","seed_vc","--model",model_path(models,"seed"),"--backend",backend,"--task-route","v1_svc","--audio",vocal,"--voice-ref",reference,"--out",converted,"--out-format","pcm16","--num-inference-steps","30","--request-option","auto_f0_adjust=false"],cancel,Path(root)/"voice-conversion.log")
         stage("Mezclando pistas")
         new_voice=load_stereo(converted)
         result=mix_stems(instrumental,new_voice)

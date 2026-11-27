@@ -69,3 +69,5 @@ El compositor mantiene Generar letra visible. Solo si la resolución o escala im
 
 ## Mis voces (experimental)
 Perfiles locales con autorización: grabación por micrófono Windows MCI o importación WAV PCM16 de 5–30 s; recomendado 15–30 s limpios. Los perfiles aparecen en Crear música y Editor musical (excepto Repaint, para no modificar el audio exterior). Instalación opcional de audio.cpp v0.9.6 y pesos HTDemucs Q8/Seed-VC Q8 verificados. Genera primero con ACE-Step, libera el motor, separa, convierte y mezcla; conserva el original y el instrumental extraído. No garantiza timbre exacto ni pista de estudio original. CPU/GPU y duración real pendientes de benchmark. MIDI y generadores instrumentales ligeros permanecen pendientes, sin ediciones separadas.
+
+Desde Editor musical, Sustituir cantante sin regenerar música aplica la conversión al WAV de origen, no a la letra escrita en el formulario; conserva la versión original. Descargar todo incluye los componentes vocales con autorización explícita. Las muestras de micrófono no salen del equipo.

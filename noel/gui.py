@@ -510,6 +510,7 @@ class Studio:
         self.compose_button.state(["disabled"])
         self.edit_button.state(["disabled"])
         self.voice_apply_button.state(["disabled"])
+        self.replace_voice_button.state(["disabled"])
         self.progress.configure(mode="determinate" if download else "indeterminate", value=0, maximum=100)
         self.progress.pack(side="right", padx=6)
         if not download:
@@ -595,6 +596,7 @@ class Studio:
                 self.compose_button.state(["!disabled"])
                 self.edit_button.state(["!disabled"])
                 self.voice_apply_button.state(["!disabled"])
+                self.replace_voice_button.state(["!disabled"])
                 self.status.set(text)
                 if self.action=="Detectando recursos":
                     callback=self.pending_hardware_action
@@ -641,11 +643,11 @@ class Studio:
             self.run(lambda: install_engine(ROOT, asset, self.cancel, lambda n,total: self.events.put(("progress", (f"Motor · {n/1e6:.1f}/{total/1e6:.1f} MB", n, total)))), "Instalación del motor", download=True)
 
     def close(self):
-        self.discard_recording()
         try:
             self.player.close()
         except OSError:
             pass
+        self.discard_recording()
         self.closing = True
         self.cancel.set()
 
@@ -917,9 +919,9 @@ class Studio:
         ttk.Button(row,text="Eliminar perfil",command=self.delete_voice_profile).pack(side="left",padx=2)
         ttk.Label(form,text="Aplicar voz a una canción existente",style="Field.TLabel",font=("Segoe UI",14,"bold")).pack(anchor="w",pady=(8,3))
         ttk.Label(form,text="Selecciona el perfil arriba y un WAV propio/autorizado. Se conserva una copia del instrumental extraído; la separación y el timbre son aproximados.",wraplength=620).pack(anchor="w")
-        self.voice_apply_button=ttk.Button(form,text="Sustituir cantante de un WAV",command=lambda:self.apply_existing_voice(False))
+        self.voice_apply_button=ttk.Button(form,text="Sustituir cantante de un WAV",command=lambda:self.refresh_then(lambda:self.apply_existing_voice(False)))
         self.voice_apply_button.pack(fill="x",pady=3)
-        ttk.Button(form,text="Aplicar a canción seleccionada en biblioteca",command=lambda:self.apply_existing_voice(True)).pack(fill="x",pady=3)
+        ttk.Button(form,text="Aplicar a canción seleccionada en biblioteca",command=lambda:self.refresh_then(lambda:self.apply_existing_voice(True))).pack(fill="x",pady=3)
         ttk.Button(form,text="Instalar componentes de clonación",command=self.install_voice_components).pack(fill="x",pady=5)
         self.voice_status=ttk.Label(form,text="HTDemucs Q8 + Seed-VC Q8 + audio.cpp · experimentales, instalación opcional.",wraplength=620)
         self.voice_status.pack(anchor="w")
@@ -965,17 +967,18 @@ class Studio:
         if not self.voice_consent.get():
             messagebox.showinfo("Mis voces","Confirma que autorizas la grabación.")
             return
+        self.stop_player()
         self.discard_recording()
         self.voice_sample=None
         self.voice_temp=tempfile.TemporaryDirectory(prefix="noel-voice-")
         try:
-            self.stop_player()
             self.recording.start()
             self.record_start=time.monotonic()
             self.record_button.configure(state="disabled")
             self.record_tick()
         except (OSError,ValueError) as exc:
             self.discard_recording()
+            self.record_button.configure(state="normal")
             messagebox.showerror("Micrófono",str(exc))
 
     def record_tick(self):
@@ -1093,6 +1096,29 @@ class Studio:
         return voice_engine.convert(RUNTIME,self.models,self.runs,source,voice_profiles.reference(self.voice_root,profile),
                                     profile,self.device_mode,self.cancel,lambda s:self.events.put(("stage",s)),request,title)
 
+    def replace_editor_voice(self):
+        if self.busy or not self.edit_source or not self.edit_consent.get():
+            messagebox.showinfo("Editor musical","Selecciona un WAV y confirma la autorización.")
+            return
+        profile=self.voice_profiles.get(self.edit_target_voice.get())
+        if not profile:
+            messagebox.showinfo("Editor musical","Selecciona un perfil vocal guardado; cambia de Repaint a otro modo si es necesario.")
+            return
+        if not self.voice_precheck():
+            return
+        source=self.edit_source
+        # Preserve original metadata only if it belongs to the selected source; never substitute edited lyrics.
+        request=None
+        manifest=source.with_name("version.json")
+        if source.parent.parent==self.runs and manifest.is_file():
+            request=json.loads(manifest.read_text("utf-8"))["request"]
+        def work():
+            result=voice_engine.convert(RUNTIME,self.models,self.runs,source,voice_profiles.reference(self.voice_root,profile),
+                                        profile,self.device_mode,self.cancel,lambda s:self.events.put(("stage",s)),request)
+            self.events.put(("edited",result["version"]))
+            return "Nueva versión vocal guardada sin regenerar la música."
+        self.run(work,"Edición musical")
+
     def apply_existing_voice(self,library=False):
         if self.busy or self.recording.active:
             return
@@ -1182,6 +1208,8 @@ class Studio:
         self.edit_consent_widget.pack(anchor="w",pady=6)
         self.edit_button=ttk.Button(form,text="✦ Generar versión editada",style="Accent.TButton",command=lambda:self.refresh_then(self.run_editor))
         self.edit_button.pack(fill="x",pady=5)
+        self.replace_voice_button=ttk.Button(form,text="Sustituir cantante sin regenerar música",command=lambda:self.refresh_then(self.replace_editor_voice))
+        self.replace_voice_button.pack(fill="x",pady=3)
         self.edit_status=ttk.Label(form,text="Pista instrumental idéntica + letra nueva: módulo de separación y síntesis vocal pendiente.",wraplength=650)
         self.edit_status.pack(anchor="w",pady=6)
         result=ttk.Frame(form)
@@ -1293,7 +1321,10 @@ class Studio:
                 result=editor.edit_song(engine,props,self.runs,source,mode,caption,lyrics,language,model,
                                         secrets.randbelow(2**31),fidelity,start,end,seconds,True,preserve)
             if profile:
-                result=self.apply_voice_result(result,profile)
+                try:
+                    result=self.apply_voice_result(result,profile)
+                except (InterruptedError, OSError, ValueError, RuntimeError) as exc:
+                    raise type(exc)("La edición original se guardó; no se completó la conversión vocal: "+str(exc)) from exc
             self.events.put(("edited",result["version"]))
             return "Versión editada guardada."
         self.run(work,"Edición musical")
@@ -1320,7 +1351,8 @@ class Studio:
         modes=["cpu","gpu"] if self.hardware and self.hardware.get("gpu") else ["cpu"]
         total=sum(x[1] for x in catalog().values())
         extra=sum(x[1] for device in modes for x in text_engine.ASSETS[text_engine.kind(device)])
-        note=f"Todos los modelos del catálogo: hasta {total/1e9:.2f} GB. Motores de letras: hasta {extra/1e9:.2f} GB. Si el motor musical falta o está dañado, también se descargará el portable compatible. Los archivos válidos se conservan. Se requiere espacio adicional para extraer los motores. ¿Comenzar?"
+        voice_total=sum(x[1] for x in voice_engine.MODELS.values())+sum(x[1] for mode in modes for x in voice_engine.ASSETS[voice_engine.kind(mode)])
+        note=f"Todos los modelos del catálogo: hasta {total/1e9:.2f} GB. Motores de letras: hasta {extra/1e9:.2f} GB. Componentes vocales opcionales (incluidos en esta descarga): hasta {voice_total/1e9:.2f} GB, sujetos a licencias de terceros. Si el motor musical falta o está dañado, también se descargará el portable compatible. Los archivos válidos se conservan. Se requiere espacio adicional para extraer los motores. ¿Comenzar?"
         if not messagebox.askyesno("Descargar todo",note):
             return
         directory=self.models
@@ -1343,6 +1375,7 @@ class Studio:
                 if self.cancel.is_set():
                     raise InterruptedError("Cancelado")
                 text_engine.install_runtime(RUNTIME,device,self.cancel,lambda name,n,t:self.events.put(("progress",(name,n,t))))
+                voice_engine.install(RUNTIME,directory,device,self.cancel,lambda name,n,t:self.events.put(("progress",(name,n,t))))
             return "Todos los modelos del catálogo y motores seleccionados están instalados."
         self.run(work,"Instalación completa",download=True)
 
@@ -1368,7 +1401,7 @@ class Studio:
         self.status.set("Recomendación seleccionada. Pulsa Guardar cambios para aplicarla.")
 
     def refresh_then(self, callback):
-        if self.busy:
+        if self.busy or self.recording.active:
             return
         self.pending_hardware_action=callback
         def work():
@@ -1816,7 +1849,10 @@ class Studio:
                 if title:
                     write_json(self.runs/result["version"]/"display.json", {"title": title})
             if profile:
-                result=self.apply_voice_result(result,profile,title)
+                try:
+                    result=self.apply_voice_result(result,profile,title)
+                except (InterruptedError, OSError, ValueError, RuntimeError) as exc:
+                    raise type(exc)("La canción original se guardó; no se completó la conversión vocal: "+str(exc)) from exc
             self.events.put(("song", (f"{title or 'Nueva canción'} · {result['actual_seconds']:.0f} s · lista para escuchar", result["version"])))
             return "Canción guardada · " + result["version"]
         self.run(work, "Generación")
