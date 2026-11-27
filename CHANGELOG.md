@@ -14,3 +14,5 @@ Arranque gráfico, entorno privado opcional, gestión de descargas, biblioteca m
 - Distribución separada: actualización ligera, portable con reutilización del motor verificado y compilación CUDA manual.
 
 - Interfaz creativa: tarjetas, controles de reproducción visibles, exportación MP3, preferencias de idioma/voz/instrumentos, compositor integrado y ayuda flotante.
+
+- Centro de modelos: importar/exportar GGUF, Qwen3 4B, Turbo Q4, selección CPU/GPU/híbrida, modelos predeterminados y copiar letra.

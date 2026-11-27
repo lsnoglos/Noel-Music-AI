@@ -50,3 +50,6 @@ El workflow **Compile CUDA engine (manual)** se ejecuta solo cuando se necesita 
 
 ### Interfaz creativa
 Inicio muestra tarjetas con acciones por canción, reproductor fijo, exportación WAV/MP3 local (320 kbps), letras y copia de ruta para compartir. El compositor integrado permite siete idiomas experimentales, seis secciones personalizadas, intención y estilo de escritura. La casilla instrumental ignora la letra sin borrarla. Los instrumentos y voces son condicionamiento, no garantía. El tema se inspira en degradados fucsia, violeta y azul. El motor y los pesos anteriores se conservan.
+
+## Centro de modelos y compositor Qwen
+Modelos separados por función. Cargar modelo importa un GGUF por tamaño y SHA-256 exactos; Guardar copia exporta sin mover el original. Qwen3 4B Instruct Q4_K_M (2.50 GB) se guarda en text-models para evitar el registro ACE-Step. Instala también el motor llama.cpp b12635 para CPU (~25 MB) o CUDA (~749 MB), mediante Modelos. Configuración permite CPU, GPU o CPU + GPU (ACE-Step en GPU y Qwen con 18 capas GPU). Los modelos se cargan bajo demanda, no simultáneamente. Turbo Q4 (1.45 GB) es una alternativa experimental de menor memoria; CPU puede ser lento. El perfil Q8 de 8 pasos sigue predeterminado. No hay benchmark de Qwen ni CPU real todavía.

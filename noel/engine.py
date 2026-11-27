@@ -65,14 +65,17 @@ class Engine:
     def metadata(self, method, path, body=None):
         return json.loads(self.request(method, path, body)[1])
 
-    def ready(self):
+    def ready(self, music="dit"):
         if self.metadata("GET", "/health").get("status") != "ok":
             raise RuntimeError("El motor aún no está disponible.")
         props = self.metadata("GET", "/props")
         version = props.get("version", "").split(" ")[0]
         if len(version) < 7 or not ENGINE.startswith(version):
             raise ValueError("Versión del motor incompatible. Ejecute el instalador de esta revisión.")
-        for bucket, (name, _, _) in MODELS.items():
+        from .models import catalog, required_music
+        for key in required_music(music):
+            bucket = "dit" if key == music else key
+            name = catalog()[key][0]
             if name not in props["models"].get(bucket, []):
                 raise ValueError(f"El motor necesita {name}.")
         if props["models"]["embedding"][0] != MODELS["embedding"][0]:

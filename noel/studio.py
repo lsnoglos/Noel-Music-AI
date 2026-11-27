@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from .diagnostics import PeakMonitor
-from .models import MODELS, OPTIONAL, REVISION
+from .models import MODELS, OPTIONAL, REVISION, MUSIC, catalog
 
 
 def write_json(path, data):
@@ -22,12 +22,12 @@ def render(engine, props, root, caption, lyrics, seconds, seed, model="dit", lan
         raise ValueError("Revise la descripción y la extensión de la letra.")
     if not 1 <= seconds <= 300 or not 0 <= seed < 2**31:
         raise ValueError("Use de 1 a 300 segundos y una semilla entre 0 y 2147483647.")
-    if model not in ("dit", "sft"):
+    if model not in MUSIC:
         raise ValueError("Modelo musical no admitido.")
-    name = MODELS["dit"][0] if model == "dit" else OPTIONAL["sft"][0]
-    steps = 8 if model == "dit" else 50
+    name = catalog()[model][0]
+    steps = 50 if model == "sft" else 8
     if model != "dit" and name not in props.get("models", {}).get("dit", []):
-        raise ValueError("Instale el modelo SFT antes de seleccionarlo.")
+        raise ValueError("Instale el modelo musical seleccionado.")
     payload = dict(caption=caption, lyrics=lyrics or "[Instrumental]", vocal_language=language if lyrics else "unknown",
                    duration=seconds, seed=seed, task_type="text2music", output_format="wav16",
                    inference_steps=steps, synth_batch_size=1, synth_model=name, vae=MODELS["vae"][0])

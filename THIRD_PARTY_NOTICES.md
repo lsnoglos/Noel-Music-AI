@@ -17,3 +17,6 @@ El bootstrapper utiliza PowerShell y WinForms del sistema. Python 3.14.10 x64 se
   Las ruedas redistribuidas incluyen sus metadatos y avisos de licencia.
 
 - lameenc 1.9.0 (LGPL-3.0-or-later), bindings LAME: https://pypi.org/project/lameenc/1.9.0/ ; código fuente https://github.com/chrisstaite/lameenc ; LAME https://lame.sourceforge.io/ . La rueda conserva metadatos y avisos; no se modifica la biblioteca. La dependencia se carga separadamente para exportar MP3.
+
+- Qwen3-4B-Instruct-2507 (Apache-2.0), cuantización GGUF publicada por LM Studio Community/bartowski, https://huggingface.co/lmstudio-community/Qwen3-4B-Instruct-2507-GGUF .
+- llama.cpp b12635 (MIT), descarga opcional de binarios oficiales y CUDA runtime redistribuido por upstream: https://github.com/ggml-org/llama.cpp/releases/tag/b12635 .
