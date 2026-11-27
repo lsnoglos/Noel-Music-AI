@@ -61,3 +61,6 @@ La nueva sección conecta Cover sin FSQ, Repaint y referencia tímbrica de ACE-S
 
 ## Espacio de creación y detección de recursos
 Generar, instrumentos visibles (Automático/Manual) y duración inicial 60 s permanecen sobre el historial o compositor integrado. Animación silenciosa de cinco teclas durante trabajos en segundo plano; reproducción disponible. Descargar todo autoriza todos los modelos del catálogo y los motores pertinentes para el equipo, conserva archivos válidos. Nuevos Qwen3 0.6B Q4 (484 MB) y 1.7B Q4 (1.28 GB) usan llama.cpp con modo no-thinking; calidad y velocidad pendientes de benchmark. Las recomendaciones usan RAM, hilos CPU, GPU NVIDIA y VRAM, no representan garantías ni cambian la selección sin aceptación. En Configuración puedes elegir manualmente.
+
+### Interfaz compacta
+Los modelos para música y letras se seleccionan exclusivamente en Configuración. Los avisos de recursos son específicos por operación, centrados y solo permiten continuar o ajustar modelos. Entradas y listas blancas, copiar letra deshabilitado si está vacía, compositor compacto y tarjetas con play/pausa central y menú contextual. No se incorpora todavía Stable Audio 3: requiere un backend LiteRT separado, validación de licencias/descargas y pruebas CPU. SongGen no cuenta con benchmark CPU ni español validado.

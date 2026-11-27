@@ -27,3 +27,28 @@ def recommendation_text(info, recommendation):
             + recommendation["reason"] + "\n\nMúsica: " + MUSIC[recommendation["music"]]
             + "\nLetras: " + LYRIC_MODELS[recommendation["lyrics"]]
             + "\nSon recomendaciones iniciales; no garantizan velocidad ni compatibilidad.")
+
+
+def operation_warning(info,device,purpose,selected):
+    gpu=info.get("gpu") or {}
+    free=gpu.get("free_mib") or 0
+    ram=(info.get("ram_available") or 0)/2**30
+    if purpose not in ("music","lyrics"):
+        raise ValueError("Operación desconocida")
+    models=MUSIC if purpose=="music" else LYRIC_MODELS
+    label=models[selected]
+    if device!="cpu" and not gpu:
+        return f"El modelo {label} está configurado para GPU, pero no se detectó NVIDIA. Ajusta el procesador a CPU para poder utilizarlo."
+    if purpose=="lyrics":
+        if ram<3:
+            return f"Solo hay {ram:.1f} GiB de RAM libre. {label} puede agotar la memoria; libera recursos antes de componer."
+        if device=="cpu" and selected=="qwen" and ram<6:
+            return "Qwen3 4B puede ser lento con la RAM libre actual. En Configuración puedes seleccionar Qwen3 0.6B o 1.7B."
+        if device!="cpu" and free<2048:
+            return "Hay poca VRAM libre para el compositor. Libera memoria o selecciona CPU."
+        return ""
+    if device=="cpu":
+        return f"{label} generará música usando CPU. Puede tardar bastante; prueba una duración corta. Turbo Q4 es el modelo ACE-Step más ligero disponible en Noel."
+    if free<3500 or ram<3:
+        return f"Memoria disponible limitada para {label} ({free} MiB VRAM y {ram:.1f} GiB RAM). Prueba Turbo Q4 y una duración corta."
+    return ""

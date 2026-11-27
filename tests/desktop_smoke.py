@@ -22,7 +22,10 @@ def main():
         assert set(studio.panels) == {"Inicio", "Crear música", "Editor musical", "Modelos", "Configuración"}
         assert studio.modern, "ttkbootstrap no se activó"
         assert "Niño" in studio.voice["values"]
-        assert studio.model_choice.current() == 0
+        assert studio.music_default == "dit"
+        assert not hasattr(studio,"model_choice")
+        assert not hasattr(studio,"lyric_model_choice")
+        assert studio.copy_button.instate(["disabled"])
         assert studio.duration.get() == 60
         assert studio.instrument_mode.get()=="auto"
         failures = []
@@ -77,8 +80,16 @@ def main():
                 assert "CPU + GPU" in studio.device_setting["values"]
                 studio.lyrics.delete("1.0","end")
                 studio.lyrics.insert("1.0","Hola mundo")
+                studio.update_copy_button()
+                assert not studio.copy_button.instate(["disabled"])
                 studio.copy_lyrics()
                 assert window.clipboard_get()=="Hola mundo"
+                studio.lyrics.delete("1.0","end")
+                studio.update_copy_button()
+                assert studio.copy_button.instate(["disabled"])
+                studio.sync_card_playback(run/"song.wav")
+                assert studio.card_playing==run/"song.wav"
+                studio.sync_card_playback(None)
                 studio.show_page("Editor musical")
                 studio.set_edit_source(run/"song.wav","Hola","Demo")
                 assert studio.edit_source == run/"song.wav"

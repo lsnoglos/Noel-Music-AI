@@ -23,3 +23,5 @@ Centro de modelos: importación/exportación verificada, Qwen independiente con 
 Editor musical fase 1: adaptador multipart nativo, Cover sin FSQ, Repaint (PCM exterior opcional), referencia tímbrica y guardado independiente. Pendientes pruebas reales RTX 3070 y separación/síntesis vocal. No se cambia el motor fijado ni se descargan modelos.
 
 Espacio creativo: panel de generación fijo, instrumentos visibles, duración 60 s, piano de actividad, descarga completa, Qwen3 0.6B/1.7B, recomendación de hardware. Pendientes CI y benchmark real de nuevos Qwen y dimensiones/DPI del equipo. Motor ACE-Step sin cambios.
+
+Interfaz compacta y avisos separados. Stable Audio 3 Small Music permanece en evaluación: motor Windows LiteRT, instrumental hasta 120 s, licencia y dependencias por verificar antes de incluir descargas. No se altera ACE-Step. Pruebas Windows pendientes.

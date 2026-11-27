@@ -152,3 +152,27 @@ def instrument_icon(name, master):
         for x in (18,23,28):
             d.ellipse((x,7,x+3,10),fill=white)
     return ImageTk.PhotoImage(im.resize((15,15),Image.Resampling.LANCZOS),master=master)
+
+
+def center_dialog(dialog,parent):
+    dialog.update_idletasks()
+    width,height=dialog.winfo_reqwidth(),dialog.winfo_reqheight()
+    x=parent.winfo_rootx()+(parent.winfo_width()-width)//2
+    y=parent.winfo_rooty()+(parent.winfo_height()-height)//2
+    x=max(0,min(x,parent.winfo_screenwidth()-width))
+    y=max(0,min(y,parent.winfo_screenheight()-height))
+    dialog.geometry(f"+{x}+{y}")
+    dialog.deiconify()
+
+
+def draw_play_state(canvas,color,playing):
+    canvas.delete("play_state")
+    w,h=canvas.winfo_width(),canvas.winfo_height()
+    if w<60 or h<40:
+        return
+    canvas.create_oval(w-55,h/2-19,w-17,h/2+19,fill="white",outline="",tags="play_state")
+    if playing:
+        for x in (w-43,w-34):
+            canvas.create_rectangle(x,h/2-8,x+5,h/2+8,fill=color,outline="",tags="play_state")
+    else:
+        canvas.create_polygon(w-41,h/2-9,w-41,h/2+9,w-26,h/2,fill=color,outline="",tags="play_state")
