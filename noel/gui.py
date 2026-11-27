@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 import tempfile
+import wave
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -236,7 +237,6 @@ class Studio:
         ttk.Label(setup, text="Descarga, carga un GGUF existente o guarda una copia. Cada archivo se verifica por tamaño y SHA-256.", wraplength=650).pack(anchor="w", pady=8)
         ttk.Button(setup, text="Instalar paquete musical predeterminado", command=lambda: self.install(required_music(self.music_default))).pack(anchor="w", pady=6)
         ttk.Button(setup, text="↓ Descargar todo · motores y modelos", style="Accent.TButton", command=self.download_all).pack(anchor="w", pady=6)
-        ttk.Button(setup,text="Conversión vocal · HTDemucs y Seed-VC",command=lambda:self.show_page("Mis voces")).pack(anchor="w",pady=4)
         self.model_states = {}
         descriptions = {"embedding":"Interpreta las instrucciones musicales", "dit":"Generación rápida · perfil probado",
                         "vae":"Decodificación de audio", "lm":"Compositor musical rápido · seguimiento de instrucciones limitado",
@@ -270,6 +270,18 @@ class Studio:
         ttk.Button(setup, text="Instalar motor Qwen (llama.cpp)", command=self.install_text_runtime).pack(anchor="w", pady=8)
         self.text_runtime_status = ttk.Label(setup, text="Motor de letras independiente · instalación opcional", wraplength=600)
         self.text_runtime_status.pack(anchor="w")
+        ttk.Label(setup,text="Modelos de voz",font=("Segoe UI",15,"bold")).pack(anchor="w",pady=(16,4))
+        self.voice_model_states={}
+        for key,label in (("tts","Qwen3-TTS 0.6B · voz hablada"),("demucs","HTDemucs Q8 · separación"),("seed","Seed-VC Q8 · conversión de canto")):
+            row=ttk.Frame(setup,padding=6)
+            row.pack(fill="x")
+            ttk.Label(row,text=label,style="Field.TLabel").pack(anchor="w")
+            state=ttk.Label(row,text="Comprobando…")
+            state.pack(anchor="w")
+            self.voice_model_states[key]=state
+            ttk.Button(row,text="↓ Descargar / verificar",command=lambda k=key:self.install_voice_components(k)).pack(anchor="w")
+        self.voice_runtime_status=ttk.Label(setup,text="Motor audio.cpp")
+        self.voice_runtime_status.pack(anchor="w")
         settings_scroll = ScrollFrame(settings)
         settings_scroll.pack(fill="both", expand=True)
         settings = settings_scroll.inner
@@ -458,6 +470,8 @@ class Studio:
         self.style.configure("Nav.TButton", background="#392d66", foreground="#ffffff", padding=8)
         self.style.configure("ActiveNav.TButton", background="#cf137e", foreground="#ffffff", padding=8)
         self.style.configure("Accent.TButton", background="#c91382", foreground="#ffffff", padding=8)
+        self.style.configure("Record.TButton",background="#c92535",foreground="#ffffff",padding=6)
+        self.style.map("Record.TButton",background=[("active","#ee3a4a"),("disabled","#79434c")])
         self.style.configure("Instrument.TCheckbutton", font=("Segoe UI",9), padding=0, background=bg, foreground=fg)
         self.style.map("Accent.TButton", background=[("active", "#ee36a2"), ("disabled", "#675268")])
         self.style.map("ActiveNav.TButton", background=[("active", "#ee36a2")])
@@ -466,7 +480,7 @@ class Studio:
         self.style.configure("Good.TLabel", foreground="#43cfa3", background=bg)
         self.style.configure("Warn.TLabel", foreground="#f3b94c", background=bg)
         self.w.configure(background=bg)
-        for widget in (getattr(self, "lyrics", None), getattr(self, "home_history", None), getattr(self, "create_history", None)):
+        for widget in (getattr(self, "lyrics", None), getattr(self, "home_history", None), getattr(self, "create_history", None),getattr(self,"voice_list",None),getattr(self,"phrase_list",None),getattr(self,"voice_test_text",None)):
             if widget is not None:
                 widget.configure(background="#ffffff", foreground="#22243a", selectbackground="#dbc5f1", selectforeground="#22243a")
         if hasattr(self, "lyrics"):
@@ -510,8 +524,8 @@ class Studio:
         self.generate_button.state(["disabled"])
         self.compose_button.state(["disabled"])
         self.edit_button.state(["disabled"])
-        self.voice_apply_button.state(["disabled"])
         self.voice_speak_button.state(["disabled"])
+        self.save_voice_button.state(["disabled"])
         self.replace_voice_button.state(["disabled"])
         self.progress.configure(mode="determinate" if download else "indeterminate", value=0, maximum=100)
         self.progress.pack(side="right", padx=6)
@@ -566,8 +580,28 @@ class Studio:
                         self.stage += f" · {speed/1e6:.1f} MB/s"
                 self.download_sample = n, total, now
                 self.progress.configure(mode="determinate", value=percent)
+            elif kind == "voice_inventory":
+                states,ready=text
+                for key,ok in states.items():
+                    path=voice_engine.model_path(self.models,key)
+                    self.voice_model_states[key].configure(text=("✓ Instalado y verificado" if ok else "⚠ Requiere reparación" if path.exists() else "○ No descargado")+" · "+str(round(voice_engine.MODELS[key][1]/1e6))+" MB")
+                self.voice_runtime_status.configure(text="✓ Motor audio.cpp verificado" if ready else "Motor audio.cpp pendiente para el dispositivo seleccionado")
+            elif kind == "sample_ready":
+                self.set_voice_sample(*text)
+            elif kind == "draft_profile":
+                self.draft_profile,self.draft_signature=text
+            elif kind == "speech_result":
+                self.refresh_phrases()
+                self.speech_status.configure(text="Frase generada. Escúchala desde el historial.")
             elif kind == "voice_profile":
+                self.stop_player()
+                self.reset_draft()
                 self.refresh_voices()
+                for index,p in enumerate(self.voice_profiles.values()):
+                    if p["id"]==text["id"]:
+                        self.voice_list.selection_clear(0,"end")
+                        self.voice_list.selection_set(index)
+                self.voice_selection_changed()
                 self.voice_status.configure(text="Perfil guardado localmente.")
             elif kind == "speech_status":
                 self.speech_status.configure(text=text)
@@ -599,8 +633,8 @@ class Studio:
                 self.generate_button.state(["!disabled"])
                 self.compose_button.state(["!disabled"])
                 self.edit_button.state(["!disabled"])
-                self.voice_apply_button.state(["!disabled"])
                 self.voice_speak_button.state(["!disabled"])
+                self.refresh_phrases()
                 self.replace_voice_button.state(["!disabled"])
                 self.status.set(text)
                 if self.action=="Detectando recursos":
@@ -618,7 +652,7 @@ class Studio:
                     else:
                         messagebox.showerror("Noel Music AI", text)
                 self.library()
-                if kind == "done" and not self.closing and self.action in ("Instalación de modelos", "Instalación del motor", "Importar modelo", "Instalar motor Qwen", "Instalación completa"):
+                if kind == "done" and not self.closing and self.action in ("Instalación de modelos", "Instalación del motor", "Importar modelo", "Instalar motor Qwen", "Instalación completa","Instalación vocal"):
                     self.inspect()
         if self.player.opened:
             try:
@@ -631,6 +665,13 @@ class Studio:
                 self.spectrum.delete("all")
                 playing=self.player.send("status noelplayer mode")=="playing" and position<duration
                 self.sync_card_playback(self.playing_file if playing else None)
+                if self.playing_file==self.voice_sample and self.voice_sample:
+                    self.sample_cursor.set(position/1000)
+                    self.sample_time.configure(text=f"{self.format_time(position)} / {self.format_time(duration)}")
+                    self.sample_play.configure(text="Ⅱ" if playing else "▶")
+                    self.draw_sample_wave()
+                else:
+                    self.sample_play.configure(text="▶")
                 if self.playing_file and playing:
                     for i, level in enumerate(spectrum(self.playing_file, position)):
                         self.spectrum.create_rectangle(i*10+1, 30-28*level, i*10+8, 30, fill="#36d1cf", outline="")
@@ -639,6 +680,9 @@ class Studio:
         else:
             self.sync_card_playback(None)
         if self.closing and not self.busy:
+            self.discard_recording()
+            if self.draft_temp:
+                self.draft_temp.cleanup()
             self.w.destroy()
             return
         if self.busy:
@@ -654,7 +698,8 @@ class Studio:
             self.player.close()
         except OSError:
             pass
-        self.discard_recording()
+        if self.recording.active:
+            self.discard_recording()
         self.closing = True
         self.cancel.set()
 
@@ -808,6 +853,7 @@ class Studio:
                 missing = missing or (key in required_music(self.music_default) and not ok)
                 rows.append(f"{name} · {state}")
             self.events.put(("inventory", ("\n".join(rows), inventory, missing)))
+            self.events.put(("voice_inventory",({k:voice_engine.model_ready(self.models,k) for k in voice_engine.MODELS},bool(voice_engine.binary(RUNTIME,self.device_mode)))))
             self.events.put(("text_runtime", "✓ Motor Qwen instalado y verificado" if text_engine.runtime_ready(RUNTIME,self.device_mode) else "Motor Qwen no instalado para "+DEVICES[self.device_mode]))
         self.run(work, "Diagnóstico")
 
@@ -893,64 +939,249 @@ class Studio:
                         proc.wait()
 
     def build_voices(self,parent):
-        scroll=ScrollFrame(parent)
-        scroll.pack(fill="both",expand=True)
-        form=scroll.inner
-        ttk.Label(form,text="Mis voces",font=("Segoe UI",22,"bold")).pack(anchor="w")
-        ttk.Label(form,text="Registra tu voz o una voz autorizada. El perfil es local y reutilizable; no entrena un modelo individual.",wraplength=620).pack(anchor="w",pady=6)
-        self.field_label(form,"Nombre del perfil","Nombre para reconocer la voz en Crear música y Editor musical.")
-        self.voice_name=ttk.Entry(form)
-        self.voice_name.pack(fill="x")
-        self.voice_kind=self.combo(form,"Tipo de muestra",["Hablada","Cantada"],"Una referencia hablada limpia es recomendable para TTS; una muestra cantada puede ayudar a Seed-VC.")
-        ttk.Label(form,text="Lee o canta con naturalidad: Cada día es una nueva oportunidad para imaginar, soñar y crear. La música expresa lo que sentimos.",wraplength=620,style="Field.TLabel").pack(anchor="w",pady=6)
+        ttk.Label(parent,text="Mis voces",font=("Segoe UI",22,"bold")).pack(anchor="w")
+        split=ttk.Frame(parent)
+        split.pack(fill="both",expand=True)
+        split.columnconfigure(0,weight=3,uniform="voices")
+        split.columnconfigure(1,weight=2,uniform="voices")
+        split.rowconfigure(0,weight=1)
+        left=ScrollFrame(split,auto_hide=True)
+        left.grid(row=0,column=0,sticky="nsew",padx=(0,8))
+        form=left.inner
+        right=ttk.Frame(split,padding=5)
+        right.grid(row=0,column=1,sticky="nsew")
+        ttk.Label(form,text="1 · Preparar una voz",style="Field.TLabel",font=("Segoe UI",14,"bold")).pack(anchor="w")
         row=ttk.Frame(form)
         row.pack(fill="x")
-        self.record_button=ttk.Button(row,text="● Grabar (hasta 30 s)",command=self.start_voice_recording,style="Accent.TButton")
-        self.record_button.pack(side="left",padx=2)
-        ttk.Button(row,text="■ Detener",command=self.finish_voice_recording).pack(side="left",padx=2)
-        ttk.Button(row,text="Importar WAV",command=self.import_voice_sample).pack(side="left",padx=2)
-        ttk.Button(row,text="▶ Escuchar muestra",command=lambda:self.play_editor_file(self.voice_sample)).pack(side="left",padx=2)
-        self.voice_sample=None
-        self.voice_sample_label=ttk.Label(form,text="Sin muestra. Recomendamos 15–30 s sin música.")
-        self.voice_sample_label.pack(anchor="w",pady=5)
-        self.field_label(form,"Texto exacto de la muestra (opcional)","Transcribe las palabras realmente pronunciadas en el WAV; ayuda a conservar prosodia y acento. Déjalo vacío si no las conoces.")
-        self.voice_transcript=ttk.Entry(form)
-        self.voice_transcript.pack(fill="x")
+        row.columnconfigure(0,weight=1,uniform="voiceform")
+        row.columnconfigure(1,weight=1,uniform="voiceform")
+        a,b=ttk.Frame(row),ttk.Frame(row)
+        a.grid(row=0,column=0,sticky="ew",padx=(0,3))
+        b.grid(row=0,column=1,sticky="ew",padx=(3,0))
+        self.field_label(a,"Nombre del perfil","Nombre que se usará en Crear música y Editor musical.")
+        self.voice_name=ttk.Entry(a)
+        self.voice_name.pack(fill="x")
+        self.voice_kind=self.combo(b,"Tipo de muestra",["Hablada","Cantada"],"Una grabación limpia mejora la referencia. Lee un texto natural o canta una frase durante 15–30 segundos.")
         self.voice_consent=tk.BooleanVar(value=False)
-        ttk.Checkbutton(form,text="Es mi voz o tengo autorización para utilizarla.",variable=self.voice_consent).pack(anchor="w")
-        ttk.Button(form,text="Guardar perfil",command=self.save_voice_profile,style="Accent.TButton").pack(fill="x",pady=6)
-        ttk.Label(form,text="Biblioteca de voces",style="Field.TLabel",font=("Segoe UI",14,"bold")).pack(anchor="w")
-        self.voice_list=tk.Listbox(form,height=4,background="white",foreground="#22243a",exportselection=False)
-        self.voice_list.pack(fill="x")
+        ttk.Checkbutton(form,text="Es mi voz o tengo autorización.",variable=self.voice_consent).pack(anchor="w",pady=3)
         row=ttk.Frame(form)
-        row.pack(fill="x",pady=4)
-        ttk.Button(row,text="▶ Escuchar perfil",command=self.play_voice_profile).pack(side="left",padx=2)
-        ttk.Button(row,text="Guardar WAV",command=self.export_voice_profile).pack(side="left",padx=2)
-        ttk.Button(row,text="Eliminar perfil",command=self.delete_voice_profile).pack(side="left",padx=2)
-        lab=ttk.LabelFrame(form,text="Laboratorio de voz · texto a voz",padding=8)
-        lab.pack(fill="x",pady=8)
-        ttk.Label(lab,text="Selecciona un perfil arriba y escribe algo que nunca hayas grabado. Qwen3-TTS sintetiza voz hablada; Seed-VC convierte canto.",wraplength=570).pack(anchor="w")
-        self.voice_test_text=tk.Text(lab,height=3,wrap="word",background="white",foreground="#22243a")
-        self.voice_test_text.insert("1.0","¡Hola! Soy una voz digital. Hoy voy a cantar rock desde la Luna.")
+        row.pack(fill="x",pady=3)
+        self.record_button=ttk.Button(row,text="● REC · 30 s",command=self.start_voice_recording,style="Record.TButton")
+        self.record_button.pack(side="left",padx=1)
+        ttk.Button(row,text="■",width=3,command=self.finish_voice_recording).pack(side="left",padx=1)
+        ttk.Button(row,text="Importar MP3 / WAV",command=self.import_voice_sample).pack(side="left",padx=1)
+        self.voice_sample=None
+        self.draft_profile=None
+        self.draft_temp=None
+        self.draft_signature=None
+        self.sample_duration=0
+        self.sample_start=0
+        self.sample_peaks=[]
+        self.sample_cursor=tk.DoubleVar(value=0)
+        self.voice_sample_label=ttk.Label(form,text="Graba o importa una referencia autorizada.",wraplength=320)
+        self.voice_sample_label.pack(anchor="w")
+        self.sample_wave=tk.Canvas(form,height=38,background="#25204b",highlightthickness=0)
+        self.sample_wave.pack(fill="x")
+        self.sample_wave.bind("<Configure>",lambda _:self.draw_sample_wave())
+        self.sample_wave.bind("<Button-1>",self.sample_wave_seek)
+        row=ttk.Frame(form)
+        row.pack(fill="x")
+        self.sample_scale=ttk.Scale(row,from_=0,to=1,variable=self.sample_cursor,command=self.sample_seek)
+        self.sample_scale.pack(side="left",fill="x",expand=True)
+        self.sample_time=ttk.Label(row,text="0:00 / 0:00")
+        self.sample_time.pack(side="left",padx=3)
+        self.sample_play=ttk.Button(row,text="▶",width=3,command=self.toggle_sample)
+        self.sample_play.pack(side="right")
+        self.sample_clip_label=ttk.Label(form,text="Referencia: primeros 30 s.",wraplength=330)
+        self.sample_clip_label.pack(anchor="w")
+        ttk.Button(form,text="Usar fragmento desde el cursor",command=self.choose_sample_start).pack(anchor="w",pady=2)
+        self.extract_sample=tk.BooleanVar(value=False)
+        ttk.Checkbutton(form,text="Extraer voz si contiene música (HTDemucs)",variable=self.extract_sample).pack(anchor="w")
+        # Hidden optional advanced setting, kept for accurate reference transcription.
+        advanced=ttk.Frame(form)
+        self.voice_transcript=ttk.Entry(advanced)
+        ttk.Label(advanced,text="Palabras que realmente pronunciaste. Ayuda a imitar la prosodia; si no las recuerdas, déjalo vacío.",wraplength=300).pack(anchor="w")
+        self.voice_transcript.pack(fill="x")
+        ttk.Button(form,text="ⓘ Transcripción opcional",command=lambda:advanced.pack(fill="x",before=self.voice_test_title) if not advanced.winfo_manager() else advanced.pack_forget()).pack(anchor="w")
+        self.voice_test_title=ttk.Label(form,text="2 · Prueba la voz",style="Field.TLabel",font=("Segoe UI",14,"bold"))
+        self.voice_test_title.pack(anchor="w",pady=(8,0))
+        self.voice_target=ttk.Label(form,text="Nueva voz · sin guardar",wraplength=330)
+        self.voice_target.pack(anchor="w")
+        self.voice_test_language=self.combo(form,"Idioma",list(LANGUAGES),"Idioma de la frase nueva.")
+        self.voice_test_text=tk.Text(form,height=3,width=15,wrap="word",background="white",foreground="#22243a",insertbackground="#22243a")
         self.voice_test_text.pack(fill="x",pady=4)
-        self.voice_test_language=self.combo(lab,"Idioma de la prueba",list(LANGUAGES),"Idioma del texto nuevo, no cambia la identidad del perfil.")
-        row=ttk.Frame(lab)
-        row.pack(fill="x",pady=4)
-        self.voice_speak_button=ttk.Button(row,text="✦ Generar voz",style="Accent.TButton",command=self.speak_profile)
-        self.voice_speak_button.pack(side="left",padx=2)
-        ttk.Button(row,text="▶ Escuchar",command=self.play_speech).pack(side="left",padx=2)
-        ttk.Button(row,text="↓ WAV",command=self.export_speech).pack(side="left",padx=2)
-        ttk.Button(lab,text="Instalar modelo de voz hablada · 1.99 GB + motor",command=lambda:self.install_voice_components("speech")).pack(fill="x")
-        self.speech_status=ttk.Label(lab,text="No requiere instalar los modelos de canto.",wraplength=570)
+        ttk.Label(form,text="Escribe una frase nueva; no es necesario repetir la muestra.",wraplength=300).pack(anchor="w")
+        self.voice_speak_button=ttk.Button(form,text="✦ Generar frase",style="Accent.TButton",command=self.speak_profile)
+        self.voice_speak_button.pack(fill="x",pady=3)
+        self.speech_status=ttk.Label(form,text="Prueba la voz antes de guardarla.",wraplength=330)
         self.speech_status.pack(anchor="w")
-        ttk.Label(form,text="Aplicar voz a una canción existente",style="Field.TLabel",font=("Segoe UI",14,"bold")).pack(anchor="w",pady=(8,3))
-        ttk.Label(form,text="Selecciona el perfil arriba y un WAV propio/autorizado. Se conserva una copia del instrumental extraído; la separación y el timbre son aproximados.",wraplength=620).pack(anchor="w")
-        self.voice_apply_button=ttk.Button(form,text="Sustituir cantante de un WAV",command=lambda:self.refresh_then(lambda:self.apply_existing_voice(False)))
-        self.voice_apply_button.pack(fill="x",pady=3)
-        ttk.Button(form,text="Aplicar a canción seleccionada en biblioteca",command=lambda:self.refresh_then(lambda:self.apply_existing_voice(True))).pack(fill="x",pady=3)
-        ttk.Button(form,text="Instalar componentes de conversión de canto",command=lambda:self.install_voice_components("singing")).pack(fill="x",pady=5)
-        self.voice_status=ttk.Label(form,text="HTDemucs Q8 + Seed-VC Q8 + audio.cpp · experimentales, instalación opcional.",wraplength=620)
+        self.save_voice_button=ttk.Button(form,text="✓ Guardar perfil",style="Accent.TButton",command=self.save_voice_profile,state="disabled")
+        self.save_voice_button.pack(fill="x",pady=5)
+        ttk.Label(right,text="Voces guardadas",style="Field.TLabel",font=("Segoe UI",14,"bold")).pack(anchor="w")
+        self.voice_list=tk.Listbox(right,height=5,background="white",foreground="#22243a",exportselection=False)
+        self.voice_list.pack(fill="x")
+        self.voice_list.bind("<<ListboxSelect>>",self.voice_selection_changed)
+        row=ttk.Frame(right)
+        row.pack(fill="x",pady=3)
+        ttk.Button(row,text="Nueva voz",command=self.new_voice).pack(side="left")
+        ttk.Button(row,text="▶",command=self.play_voice_profile,width=3).pack(side="left")
+        ttk.Button(row,text="↓ WAV",command=self.export_voice_profile).pack(side="left")
+        ttk.Button(row,text="Eliminar",command=self.delete_voice_profile).pack(side="left")
+        ttk.Label(right,text="Frases de prueba",style="Field.TLabel",font=("Segoe UI",14,"bold")).pack(anchor="w",pady=(8,2))
+        self.phrase_list=tk.Listbox(right,height=5,background="white",foreground="#22243a",exportselection=False)
+        self.phrase_list.pack(fill="both",expand=True)
+        self.phrase_list.bind("<<ListboxSelect>>",self.show_phrase_text)
+        self.phrase_items=[]
+        self.phrase_detail=ttk.Label(right,text="Selecciona una frase.",wraplength=240)
+        self.phrase_detail.pack(anchor="w")
+        row=ttk.Frame(right)
+        row.pack(fill="x",pady=3)
+        ttk.Button(row,text="▶ Escuchar",command=self.play_speech).pack(side="left",padx=1)
+        ttk.Button(row,text="↓ WAV",command=self.export_speech).pack(side="left",padx=1)
+        self.voice_status=ttk.Label(right,text="",wraplength=250)
         self.voice_status.pack(anchor="w")
+
+    def reset_draft(self):
+        if self.draft_temp:
+            self.draft_temp.cleanup()
+        self.draft_temp=None
+        self.draft_profile=None
+        self.draft_signature=None
+        self.save_voice_button.configure(state="disabled")
+        self.refresh_phrases()
+
+    def new_voice(self):
+        if self.busy or self.recording.active:
+            return
+        self.stop_player()
+        self.voice_list.selection_clear(0,"end")
+        self.reset_draft()
+        self.discard_recording()
+        self.voice_sample=None
+        self.sample_duration=0
+        self.sample_start=0
+        self.sample_peaks=[]
+        self.sample_cursor.set(0)
+        self.sample_scale.configure(to=1)
+        self.sample_time.configure(text="0:00 / 0:00")
+        self.sample_play.configure(text="▶")
+        self.draw_sample_wave()
+        self.voice_name.delete(0,"end")
+        self.voice_transcript.delete(0,"end")
+        self.voice_consent.set(False)
+        self.extract_sample.set(False)
+        self.voice_sample_label.configure(text="Graba o importa una referencia autorizada.")
+        self.sample_clip_label.configure(text="Referencia: primeros 30 s.")
+        self.voice_selection_changed()
+
+    def set_voice_sample(self,path,name,extract=False):
+        self.voice_list.selection_clear(0,"end")
+        self.reset_draft()
+        self.voice_sample=Path(path)
+        with wave.open(str(path),"rb") as f:
+            self.sample_duration=f.getnframes()/f.getframerate()
+        self.sample_peaks=envelope(path,100)
+        self.sample_start=0
+        self.sample_cursor.set(0)
+        self.sample_scale.configure(to=max(1,self.sample_duration))
+        self.sample_time.configure(text=f"0:00 / {self.format_time(self.sample_duration*1000)}")
+        self.extract_sample.set(extract)
+        if extract:
+            self.voice_kind.set("Cantada")
+        self.voice_sample_label.configure(text=f"{name} · {self.sample_duration:.1f} s")
+        self.sample_clip_label.configure(text=f"Referencia: 0:00 – {self.format_time(min(30,self.sample_duration)*1000)}")
+        self.draw_sample_wave()
+        self.voice_selection_changed()
+
+    def draw_sample_wave(self):
+        canvas=self.sample_wave
+        canvas.delete("all")
+        w,h=canvas.winfo_width(),canvas.winfo_height()
+        if not self.sample_peaks or not self.sample_duration:
+            return
+        a=w*self.sample_start/self.sample_duration
+        b=w*min(self.sample_duration,self.sample_start+30)/self.sample_duration
+        canvas.create_rectangle(a,0,b,h,fill="#42336b",outline="")
+        for n,peak in enumerate(self.sample_peaks):
+            x=n*w/len(self.sample_peaks)
+            canvas.create_line(x,h/2-peak*h*.44,x,h/2+peak*h*.44,fill="#ea73ca")
+        x=w*self.sample_cursor.get()/self.sample_duration
+        canvas.create_line(x,0,x,h,fill="white",width=2)
+
+    def sample_wave_seek(self,event):
+        if self.sample_duration:
+            self.sample_seek(self.sample_duration*event.x/max(1,self.sample_wave.winfo_width()))
+
+    def sample_seek(self,value):
+        if not self.voice_sample:
+            return
+        seconds=max(0,min(self.sample_duration,float(value)))
+        self.sample_cursor.set(seconds)
+        if self.playing_file==self.voice_sample and self.player.opened:
+            self.seek(int(seconds*1000))
+        self.sample_time.configure(text=f"{self.format_time(seconds*1000)} / {self.format_time(self.sample_duration*1000)}")
+        self.draw_sample_wave()
+
+    def choose_sample_start(self):
+        if self.busy or not self.voice_sample:
+            return
+        self.stop_player()
+        self.sample_start=max(0,min(self.sample_cursor.get(),self.sample_duration-5))
+        self.reset_draft()
+        self.sample_clip_label.configure(text=f"Referencia: {self.format_time(self.sample_start*1000)} – {self.format_time(min(self.sample_duration,self.sample_start+30)*1000)}")
+        self.draw_sample_wave()
+
+    def toggle_sample(self):
+        if not self.voice_sample or self.recording.active:
+            return
+        try:
+            if self.player.opened and self.playing_file==self.voice_sample:
+                if self.player.send("status noelplayer mode")=="playing":
+                    self.player.send("pause noelplayer")
+                    self.sample_play.configure(text="▶")
+                    return
+                if self.sample_cursor.get()>=self.sample_duration-.05:
+                    self.player.seek(0)
+                self.player.send("play noelplayer")
+            else:
+                position=self.sample_cursor.get()
+                if position>=self.sample_duration-.05:
+                    position=0
+                self.play_editor_file(self.voice_sample)
+                if self.player.opened:
+                    self.seek(int(position*1000))
+            self.sample_play.configure(text="Ⅱ" if self.player.opened and self.playing_file==self.voice_sample else "▶")
+        except OSError as exc:
+            messagebox.showerror("Reproducción",str(exc))
+
+    def voice_selection_changed(self,_=None):
+        profile=self.selected_profile(silent=True)
+        self.voice_target.configure(text="Perfil seleccionado: "+profile["name"] if profile else "Nueva voz · sin guardar")
+        self.refresh_phrases()
+
+    def refresh_phrases(self):
+        profile=self.selected_profile(silent=True)
+        folder=self.voice_root/profile["id"] if profile else Path(self.draft_temp.name)/self.draft_profile["id"] if self.draft_temp and self.draft_profile else None
+        self.phrase_items=voice_profiles.phrase_history(folder) if folder else []
+        self.phrase_list.delete(0,"end")
+        for item in self.phrase_items:
+            self.phrase_list.insert("end",item["text"])
+        if self.phrase_items:
+            self.phrase_list.selection_set(0)
+        self.show_phrase_text()
+        self.save_voice_button.configure(state="normal" if not profile and self.draft_profile and self.phrase_items else "disabled")
+
+    def show_phrase_text(self,_=None):
+        sel=self.phrase_list.curselection()
+        self.phrase_detail.configure(text=self.phrase_items[sel[0]]["text"] if sel and sel[0]<len(self.phrase_items) else "Selecciona una frase.")
+
+    def require_voice_models(self,keys):
+        mode=self.device_mode
+        if voice_engine.binary(RUNTIME,mode,verify=False) and all(voice_engine.model_path(self.models,k).is_file() for k in keys):
+            return True
+        if messagebox.askyesno("Modelos necesarios","Faltan componentes de voz. ¿Abrir Modelos para instalarlos?"):
+            self.show_page("Modelos")
+        return False
 
     def show_music_brief(self):
         dialog=tk.Toplevel(self.w)
@@ -971,40 +1202,68 @@ class Studio:
     def speak_profile(self):
         if self.busy or self.recording.active:
             return
-        profile=self.selected_profile()
-        if not profile:
+        profile=self.selected_profile(silent=True)
+        if not profile and not self.voice_sample:
+            messagebox.showinfo("Mis voces","Graba o importa una voz primero, o selecciona un perfil existente.")
             return
         text=self.voice_test_text.get("1.0","end").strip()
         if not 1<=len(text)<=400:
             self.speech_status.configure(text="Escribe una frase de hasta 400 caracteres.")
             return
+        if not profile and not self.voice_consent.get():
+            messagebox.showinfo("Mis voces","Confirma la autorización de la muestra.")
+            return
         mode=self.device_mode
-        if not voice_engine.binary(RUNTIME,mode,verify=False) or not voice_engine.model_path(self.models,"tts").is_file():
-            self.speech_status.configure(text="Instala primero el modelo de voz hablada.")
+        if not self.require_voice_models(("tts",)):
+            return
+        if not profile and self.extract_sample.get() and not self.require_voice_models(("demucs",)):
             return
         if mode!="cpu" and not (self.hardware or {}).get("gpu"):
             messagebox.showinfo("Voz hablada","No se detectó NVIDIA. Selecciona CPU en Configuración.")
             return
-        if self.playing_file==self.voice_root/profile["id"]/"preview.wav":
-            self.stop_player()
         language=LANGUAGES[self.voice_test_language.get()][0]
+        source=self.voice_sample
+        start=self.sample_start
+        extract=self.extract_sample.get()
+        kind=self.voice_kind.get()
+        transcript=self.voice_transcript.get().strip()
+        signature=(source,start,extract,kind,transcript)
+        if not profile and signature!=self.draft_signature:
+            self.stop_player()
+            self.reset_draft()
+        if not profile and self.draft_temp is None:
+            self.draft_temp=tempfile.TemporaryDirectory(prefix="noel-draft-")
+        draft_root=Path(self.draft_temp.name) if self.draft_temp else None
+        existing=self.draft_profile
         self.speech_status.configure(text="Sintetizando voz…")
         def work():
+            current=profile
+            root=self.voice_root
+            if current is None:
+                root=draft_root
+                current=existing
+                if current is None:
+                    with tempfile.TemporaryDirectory(dir=root) as tmp:
+                        tmp=Path(tmp)
+                        clip=tmp/"clip.wav"
+                        voice_profiles.clip_reference(source,clip,start)
+                        if extract:
+                            self.events.put(("stage","Extrayendo voz de referencia"))
+                            clip=voice_engine.isolate_reference(RUNTIME,self.models,mode,clip,tmp,self.cancel)
+                        current=voice_profiles.create_profile(root,clip,"Borrador",True,kind,transcript)
+                    self.events.put(("draft_profile",(current,signature)))
             self.events.put(("stage","Qwen3-TTS · sintetizando frase"))
-            voice_engine.speak(RUNTIME,self.models,voice_profiles.reference(self.voice_root,profile),profile,mode,text,language,self.cancel)
-            self.events.put(("speech_status","Nueva frase generada. Selecciona el mismo perfil y pulsa Escuchar."))
-            return "Síntesis de voz guardada."
+            result=voice_engine.speak(RUNTIME,self.models,voice_profiles.reference(root,current),current,mode,text,language,self.cancel)
+            self.events.put(("speech_result",(current["id"],result)))
+            return "Frase guardada."
         self.run(work,"Síntesis de voz")
 
     def speech_file(self):
-        profile=self.selected_profile()
-        if not profile:
-            return None
-        path=self.voice_root/profile["id"]/"preview.wav"
-        if not path.is_file():
-            self.speech_status.configure(text="Genera una frase para este perfil.")
-            return None
-        return path
+        selected=self.phrase_list.curselection()
+        if selected and selected[0]<len(self.phrase_items):
+            return self.phrase_items[selected[0]]["path"]
+        self.speech_status.configure(text="Selecciona una frase de prueba.")
+        return None
 
     def play_speech(self):
         path=self.speech_file()
@@ -1022,27 +1281,30 @@ class Studio:
                     messagebox.showerror("Voz hablada",str(exc))
 
     def refresh_voices(self):
-        items=voice_profiles.profiles(self.voice_root)
         old=self.voice.get()
         previous=self.edit_target_voice.get()
+        selected=self.selected_profile(silent=True)
+        items=voice_profiles.profiles(self.voice_root)
         self.voice_profiles={"Perfil · "+p["name"]:p for p in items}
         self.voice.configure(values=[v for v in VOICES if v!="Instrumental"]+list(self.voice_profiles))
         self.voice.set(old if old in self.voice["values"] else "Automática")
         self.edit_target_voice.configure(values=["Original / automática",*self.voice_profiles])
         self.edit_target_voice.set(previous if previous in self.edit_target_voice["values"] else "Original / automática")
-        selected=self.voice_list.curselection()
         self.voice_list.delete(0,"end")
-        for label,p in self.voice_profiles.items():
-            self.voice_list.insert("end",f"{label} · {p['kind']} · {p['seconds']:.1f} s")
-        if items:
-            self.voice_list.selection_set(min(selected[0],len(items)-1) if selected else 0)
+        for index,(label,p) in enumerate(self.voice_profiles.items()):
+            self.voice_list.insert("end",f"{p['name']} · {p['kind']} · {p['seconds']:.1f} s")
+            if selected and p["id"]==selected["id"]:
+                self.voice_list.selection_set(index)
+        self.voice_selection_changed()
 
-    def selected_profile(self):
+    def selected_profile(self,silent=False):
         selected=self.voice_list.curselection()
-        if not selected:
-            messagebox.showinfo("Mis voces","Selecciona un perfil.")
-            return None
-        return list(self.voice_profiles.values())[selected[0]]
+        items=list(self.voice_profiles.values())
+        if selected and selected[0]<len(items):
+            return items[selected[0]]
+        if not silent:
+            messagebox.showinfo("Mis voces","Crea una voz de prueba o selecciona un perfil existente.")
+        return None
 
     def discard_recording(self):
         if self.voice_record_timer:
@@ -1063,8 +1325,20 @@ class Studio:
             messagebox.showinfo("Mis voces","Confirma que autorizas la grabación.")
             return
         self.stop_player()
+        self.voice_list.selection_clear(0,"end")
+        self.reset_draft()
         self.discard_recording()
         self.voice_sample=None
+        self.sample_duration=0
+        self.sample_start=0
+        self.sample_peaks=[]
+        self.sample_cursor.set(0)
+        self.sample_scale.configure(to=1)
+        self.sample_time.configure(text="0:00 / 0:00")
+        self.sample_play.configure(text="▶")
+        self.draw_sample_wave()
+        self.extract_sample.set(False)
+        self.voice_selection_changed()
         self.voice_transcript.delete(0,"end")
         self.voice_temp=tempfile.TemporaryDirectory(prefix="noel-voice-")
         try:
@@ -1095,8 +1369,7 @@ class Studio:
         try:
             path=Path(self.voice_temp.name)/"sample.wav"
             self.recording.stop(path)
-            self.voice_sample=path
-            self.voice_sample_label.configure(text="Grabación lista. Escucha y guarda el perfil.")
+            self.set_voice_sample(path,"Grabación de micrófono")
         except OSError as exc:
             messagebox.showerror("Micrófono",str(exc))
         finally:
@@ -1105,25 +1378,33 @@ class Studio:
     def import_voice_sample(self):
         if self.busy or self.recording.active:
             return
-        path=filedialog.askopenfilename(filetypes=[("WAV PCM 16 bits","*.wav")])
-        if path:
-            self.stop_player()
-            self.discard_recording()
-            self.voice_sample=Path(path)
-            self.voice_transcript.delete(0,"end")
-            self.voice_consent.set(False)
-            self.voice_sample_label.configure(text=self.voice_sample.name)
+        path=filedialog.askopenfilename(filetypes=[("Audio MP3 / WAV","*.mp3 *.wav")])
+        if not path:
+            return
+        self.new_voice()
+        self.voice_temp=tempfile.TemporaryDirectory(prefix="noel-voice-")
+        target=Path(self.voice_temp.name)/"sample.wav"
+        def work():
+            voice_profiles.import_audio(path,target)
+            self.events.put(("sample_ready",(target,Path(path).name,Path(path).suffix.lower()==".mp3")))
+            return "Audio importado."
+        self.run(work,"Importando audio")
 
     def save_voice_profile(self):
-        if self.busy or self.recording.active or not self.voice_sample:
+        if self.busy or self.recording.active or not self.draft_profile or self.selected_profile(silent=True):
+            return
+        if not self.voice_consent.get():
+            messagebox.showinfo("Mis voces","Confirma la autorización.")
+            return
+        signature=(self.voice_sample,self.sample_start,self.extract_sample.get(),self.voice_kind.get(),self.voice_transcript.get().strip())
+        if signature!=self.draft_signature:
+            messagebox.showinfo("Mis voces","La referencia cambió. Genera una nueva prueba antes de guardar.")
             return
         name=self.voice_name.get()
-        consent=self.voice_consent.get()
-        kind=self.voice_kind.get()
-        transcript=self.voice_transcript.get()
-        source=self.voice_sample
+        profile=self.draft_profile
+        root=Path(self.draft_temp.name)
         def work():
-            data=voice_profiles.create_profile(self.voice_root,source,name,consent,kind,transcript)
+            data=voice_profiles.commit_draft(self.voice_root,root,profile,name)
             self.events.put(("voice_profile",data))
             return "Perfil vocal guardado."
         self.run(work,"Guardando voz")
@@ -1163,14 +1444,14 @@ class Studio:
         if self.busy or self.recording.active:
             return
         mode=self.device_mode
-        keys=("tts",) if purpose=="speech" else voice_engine.SINGING_KEYS
+        keys=(purpose,) if purpose in voice_engine.MODELS else voice_engine.SINGING_KEYS
         total=sum(voice_engine.MODELS[k][1] for k in keys)+sum(x[1] for x in voice_engine.ASSETS[voice_engine.kind(mode)])
         if not messagebox.askyesno("Componentes vocales",f"Descargar desde Hugging Face y GitHub hasta {total/1e9:.2f} GB para {DEVICES[mode]}? Se verifican los archivos. Modelos de terceros sujetos a sus licencias."):
             return
         def work():
             voice_engine.install(RUNTIME,self.models,mode,self.cancel,lambda n,b,t:self.events.put(("progress",(n,b,t))),keys=keys)
             self.events.put(("voice_components","Componentes descargados y verificados. Inferencia experimental."))
-            if purpose=="speech":
+            if purpose=="tts":
                 self.events.put(("speech_status","Qwen3-TTS instalado. Puedes generar una frase."))
             return "Componentes vocales instalados."
         self.run(work,"Instalación vocal",download=True)
@@ -1178,8 +1459,8 @@ class Studio:
     def voice_precheck(self):
         mode=self.device_mode
         if not voice_engine.binary(RUNTIME,mode,verify=False) or not all(voice_engine.model_path(self.models,k).is_file() for k in voice_engine.SINGING_KEYS):
-            messagebox.showinfo("Mis voces","Instala primero HTDemucs, Seed-VC y audio.cpp desde Mis voces.")
-            self.show_page("Mis voces")
+            messagebox.showinfo("Mis voces","Instala primero HTDemucs, Seed-VC y audio.cpp desde Modelos.")
+            self.show_page("Modelos")
             return False
         info=self.hardware or {}
         gpu=info.get("gpu") or {}

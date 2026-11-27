@@ -10,18 +10,20 @@ def create_style(window, root, runtime):
     try:
         import ttkbootstrap
         import lameenc
+        import miniaudio
     except ImportError:
         wheels = root / "ui-wheels"
         if wheels.is_dir():
             try:
                 subprocess.run([sys.executable, "-m", "pip", "install", "--no-index",
-                                "--find-links", str(wheels), "--target", str(target),
+                                "--find-links", str(wheels), "--target", str(target), "--upgrade",
                                 "-r", str(root / "requirements-ui.txt")],
                                check=True, timeout=120, capture_output=True)
                 import importlib
                 importlib.invalidate_caches()
                 import ttkbootstrap
                 import lameenc
+                import miniaudio
             except (ImportError, OSError, subprocess.SubprocessError):
                 return ttk.Style(window), False
         else:

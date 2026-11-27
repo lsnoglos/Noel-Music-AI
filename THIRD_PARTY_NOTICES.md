@@ -26,3 +26,5 @@ El bootstrapper utiliza PowerShell y WinForms del sistema. Python 3.14.10 x64 se
 - audio.cpp v0.9.6 (Apache-2.0), https://github.com/0xShug0/audio.cpp/releases/tag/v0.9.6. Descarga externa opcional. HTDemucs (upstream MIT) y Seed-VC (upstream GPL-3.0) en GGUF: https://huggingface.co/audio-cpp/audio.cpp-gguf (colección marcada other; verificar licencias de pesos y componentes para redistribución comercial). No se empaquetan los pesos ni binarios vocales en el portable.
 
 - Qwen3-TTS-12Hz-0.6B-Base (Apache-2.0 original), https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base. Conversión GGUF en audio-cpp/audio.cpp-gguf revisión 6f45df32f8fb283e4cfce3d3e1cb7688986fcbe6, descarga opcional.
+
+- pyminiaudio 1.73 (MIT), https://pypi.org/project/miniaudio/ ; decodificación local MP3/WAV.

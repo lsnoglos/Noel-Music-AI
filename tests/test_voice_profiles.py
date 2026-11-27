@@ -78,3 +78,48 @@ class VoiceTests(unittest.TestCase):
             self.assertIn("Texto real",calls)
             self.assertIn("Hola mundo",calls)
             self.assertIn("qwen3_tts",calls)
+
+    def test_history_and_commit(self):
+        from noel.voice_profiles import save_phrase,phrase_history,commit_draft,clip_reference
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            sample=self.make_sample(root)
+            draft=root/"draft"
+            p=create_profile(draft,sample,"Borrador",True)
+            folder=draft/p["id"]
+            save_phrase(folder,sample,"Primera","es")
+            save_phrase(folder,sample,"Segunda","en")
+            self.assertEqual(len(phrase_history(folder)),2)
+            saved=commit_draft(root/"voices",draft,p,"Mi voz")
+            self.assertEqual(saved["name"],"Mi voz")
+            self.assertEqual({x["text"] for x in phrase_history(root/"voices"/p["id"])},{"Primera","Segunda"})
+            self.assertTrue((folder/"reference.wav").is_file())
+            clip_reference(sample,root/"clip.wav",100)
+            self.assertTrue((root/"clip.wav").is_file())
+
+    def test_mp3_reference_import(self):
+        try:
+            import miniaudio
+            import lameenc
+        except ImportError:
+            self.skipTest("audio codecs unavailable")
+        from noel.audio_export import export_audio
+        from noel.voice_profiles import import_audio,read_pcm
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            source=self.make_sample(root)
+            mp3=root/"sample.mp3"
+            export_audio(source,mp3,"mp3")
+            original=mp3.read_bytes()
+            duration=import_audio(mp3,root/"decoded.wav")
+            self.assertGreaterEqual(duration,5)
+            self.assertLess(duration,7)
+            self.assertEqual(read_pcm(root/"decoded.wav")[1:],(44100,2))
+            self.assertEqual(mp3.read_bytes(),original)
+    def test_draft_without_test_cannot_be_saved(self):
+        from noel.voice_profiles import commit_draft
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            p=create_profile(root/"draft",self.make_sample(root),"Borrador",True)
+            with self.assertRaisesRegex(ValueError,"prueba"):
+                commit_draft(root/"voices",root/"draft",p,"Demo")
