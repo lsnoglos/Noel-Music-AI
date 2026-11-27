@@ -22,3 +22,5 @@ Arranque gráfico, entorno privado opcional, gestión de descargas, biblioteca m
 - Espacio de creación reorganizado, piano animado, descarga completa y recomendaciones de recursos; Qwen3 0.6B y 1.7B opcionales.
 
 - Interfaz compacta: entradas blancas, compositor sin selector duplicado, avisos por operación, tarjetas play/pausa y menú contextual.
+
+- Mis voces: perfiles privados reutilizables y conversión vocal experimental no destructiva.

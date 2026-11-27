@@ -19,7 +19,7 @@ def main():
             f.writeframes(b"\x01\x02\x03\x04"*48000)
         window = tk.Tk()
         studio = Studio(window)
-        assert set(studio.panels) == {"Inicio", "Crear música", "Editor musical", "Modelos", "Configuración"}
+        assert set(studio.panels) == {"Inicio", "Crear música", "Editor musical", "Mis voces", "Modelos", "Configuración"}
         assert studio.modern, "ttkbootstrap no se activó"
         assert "Niño" in studio.voice["values"]
         assert studio.music_default == "dit"
@@ -93,6 +93,8 @@ def main():
                 studio.sync_card_playback(run/"song.wav")
                 assert studio.card_playing==run/"song.wav"
                 studio.sync_card_playback(None)
+                studio.show_page("Mis voces")
+                assert studio.voice_list.winfo_exists()
                 studio.show_page("Editor musical")
                 studio.set_edit_source(run/"song.wav","Hola","Demo")
                 assert studio.edit_source == run/"song.wav"

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -30,7 +31,7 @@ from .hardware import recommend, operation_warning
 from .creative_ui import center_dialog, draw_play_state
 from .ui_theme import create_style
 from .studio import render, write_json
-from . import editor
+from . import editor, voice_profiles, voice_engine
 
 
 class Studio:
@@ -45,6 +46,11 @@ class Studio:
         self.busy = self.closing = False
         self.proc = None
         self.playing_file = None
+        self.voice_root=RUNTIME/"voices"
+        self.voice_profiles={}
+        self.recording=voice_profiles.Recorder()
+        self.voice_record_timer=None
+        self.voice_temp=None
         self.verified = {}
         self.new_version = None
         self.song_data = []
@@ -89,14 +95,14 @@ class Studio:
         content.pack(side="left", fill="both", expand=True)
         content.columnconfigure(0, weight=1)
         content.rowconfigure(0, weight=1)
-        self.panels = {name: ttk.Frame(content, padding=12) for name in ("Inicio", "Crear música", "Editor musical", "Modelos", "Configuración")}
+        self.panels = {name: ttk.Frame(content, padding=12) for name in ("Inicio", "Crear música", "Editor musical", "Mis voces", "Modelos", "Configuración")}
         self.nav_buttons = {}
         for name, panel in self.panels.items():
             panel.grid(row=0, column=0, sticky="nsew")
             b = ttk.Button(sidebar, text=name, style="Nav.TButton", command=lambda n=name: self.show_page(n))
             b.pack(fill="x", pady=4)
             self.nav_buttons[name] = b
-        home, create, edit_panel, setup, settings = self.panels.values()
+        home, create, edit_panel, voices_panel, setup, settings = self.panels.values()
         hero = tk.Canvas(home, height=94, highlightthickness=0)
         hero.pack(fill="x", pady=(0, 8))
         hero.bind("<Configure>", lambda e: gradient(hero, e.width, e.height, "#d60980", "#136fa3",
@@ -220,6 +226,8 @@ class Studio:
         self.create_history = self.make_history(result_scroll.inner)
         self.build_composer(self.results_container)
         self.build_editor(edit_panel)
+        self.build_voices(voices_panel)
+        self.refresh_voices()
         model_scroll = ScrollFrame(setup)
         model_scroll.pack(fill="both", expand=True)
         setup = model_scroll.inner
@@ -227,6 +235,7 @@ class Studio:
         ttk.Label(setup, text="Descarga, carga un GGUF existente o guarda una copia. Cada archivo se verifica por tamaño y SHA-256.", wraplength=650).pack(anchor="w", pady=8)
         ttk.Button(setup, text="Instalar paquete musical predeterminado", command=lambda: self.install(required_music(self.music_default))).pack(anchor="w", pady=6)
         ttk.Button(setup, text="↓ Descargar todo · motores y modelos", style="Accent.TButton", command=self.download_all).pack(anchor="w", pady=6)
+        ttk.Button(setup,text="Conversión vocal · HTDemucs y Seed-VC",command=lambda:self.show_page("Mis voces")).pack(anchor="w",pady=4)
         self.model_states = {}
         descriptions = {"embedding":"Interpreta las instrucciones musicales", "dit":"Generación rápida · perfil probado",
                         "vae":"Decodificación de audio", "lm":"Compositor musical rápido · seguimiento de instrucciones limitado",
@@ -372,6 +381,8 @@ class Studio:
         self.panels[name].tkraise()
         for key, button in self.nav_buttons.items():
             button.configure(style="ActiveNav.TButton" if key==name else "Nav.TButton")
+        if name == "Mis voces" and hasattr(self,"voice_list"):
+            self.refresh_voices()
         if name == "Modelos" and not self.busy and hasattr(self, "generate_button"):
             self.inspect()
         if name in ("Inicio", "Crear música"):
@@ -485,7 +496,7 @@ class Studio:
         ttk.Button(parent, text=label, command=action).pack(anchor="w", pady=3, padx=3)
 
     def run(self, function, action="Operación", download=False):
-        if self.busy:
+        if self.busy or self.recording.active:
             return
         self.busy = True
         self.cancel.clear()
@@ -498,6 +509,7 @@ class Studio:
         self.generate_button.state(["disabled"])
         self.compose_button.state(["disabled"])
         self.edit_button.state(["disabled"])
+        self.voice_apply_button.state(["disabled"])
         self.progress.configure(mode="determinate" if download else "indeterminate", value=0, maximum=100)
         self.progress.pack(side="right", padx=6)
         if not download:
@@ -551,6 +563,11 @@ class Studio:
                         self.stage += f" · {speed/1e6:.1f} MB/s"
                 self.download_sample = n, total, now
                 self.progress.configure(mode="determinate", value=percent)
+            elif kind == "voice_profile":
+                self.refresh_voices()
+                self.voice_status.configure(text="Perfil guardado localmente.")
+            elif kind == "voice_components":
+                self.voice_status.configure(text=text)
             elif kind == "lyrics":
                 self.lyrics.delete("1.0", "end")
                 self.lyrics.insert("1.0", text)
@@ -577,6 +594,7 @@ class Studio:
                 self.generate_button.state(["!disabled"])
                 self.compose_button.state(["!disabled"])
                 self.edit_button.state(["!disabled"])
+                self.voice_apply_button.state(["!disabled"])
                 self.status.set(text)
                 if self.action=="Detectando recursos":
                     callback=self.pending_hardware_action
@@ -623,6 +641,7 @@ class Studio:
             self.run(lambda: install_engine(ROOT, asset, self.cancel, lambda n,total: self.events.put(("progress", (f"Motor · {n/1e6:.1f}/{total/1e6:.1f} MB", n, total)))), "Instalación del motor", download=True)
 
     def close(self):
+        self.discard_recording()
         try:
             self.player.close()
         except OSError:
@@ -809,7 +828,7 @@ class Studio:
 
     def musical_caption(self):
         return build_caption(self.genres[self.genre.get()], self.mood.get(), self.setting.get(),
-                             "Instrumental" if self.instrumental.get() else self.voice.get(), self.prompt.get(),
+                             "Instrumental" if self.instrumental.get() else "Automática" if self.voice.get() in self.voice_profiles else self.voice.get(), self.prompt.get(),
                              [name for name,var in self.instrument_vars.items() if var.get()] if self.instrument_mode.get()=="manual" else [])
 
     @contextmanager
@@ -864,6 +883,249 @@ class Studio:
                         proc.kill()
                         proc.wait()
 
+    def build_voices(self,parent):
+        scroll=ScrollFrame(parent)
+        scroll.pack(fill="both",expand=True)
+        form=scroll.inner
+        ttk.Label(form,text="Mis voces",font=("Segoe UI",22,"bold")).pack(anchor="w")
+        ttk.Label(form,text="Registra tu voz o una voz autorizada. El perfil es local y reutilizable; no entrena un modelo individual.",wraplength=620).pack(anchor="w",pady=6)
+        self.field_label(form,"Nombre del perfil","Nombre para reconocer la voz en Crear música y Editor musical.")
+        self.voice_name=ttk.Entry(form)
+        self.voice_name.pack(fill="x")
+        self.voice_kind=self.combo(form,"Tipo de muestra",["Hablada","Cantada"],"Una muestra cantada limpia puede mejorar el resultado.")
+        ttk.Label(form,text="Lee o canta con naturalidad: Cada día es una nueva oportunidad para imaginar, soñar y crear. La música expresa lo que sentimos.",wraplength=620,style="Field.TLabel").pack(anchor="w",pady=6)
+        row=ttk.Frame(form)
+        row.pack(fill="x")
+        self.record_button=ttk.Button(row,text="● Grabar (hasta 30 s)",command=self.start_voice_recording,style="Accent.TButton")
+        self.record_button.pack(side="left",padx=2)
+        ttk.Button(row,text="■ Detener",command=self.finish_voice_recording).pack(side="left",padx=2)
+        ttk.Button(row,text="Importar WAV",command=self.import_voice_sample).pack(side="left",padx=2)
+        ttk.Button(row,text="▶ Escuchar muestra",command=lambda:self.play_editor_file(self.voice_sample)).pack(side="left",padx=2)
+        self.voice_sample=None
+        self.voice_sample_label=ttk.Label(form,text="Sin muestra. Recomendamos 15–30 s sin música.")
+        self.voice_sample_label.pack(anchor="w",pady=5)
+        self.voice_consent=tk.BooleanVar(value=False)
+        ttk.Checkbutton(form,text="Es mi voz o tengo autorización para utilizarla.",variable=self.voice_consent).pack(anchor="w")
+        ttk.Button(form,text="Guardar perfil",command=self.save_voice_profile,style="Accent.TButton").pack(fill="x",pady=6)
+        ttk.Label(form,text="Biblioteca de voces",style="Field.TLabel",font=("Segoe UI",14,"bold")).pack(anchor="w")
+        self.voice_list=tk.Listbox(form,height=4,background="white",foreground="#22243a",exportselection=False)
+        self.voice_list.pack(fill="x")
+        row=ttk.Frame(form)
+        row.pack(fill="x",pady=4)
+        ttk.Button(row,text="▶ Escuchar perfil",command=self.play_voice_profile).pack(side="left",padx=2)
+        ttk.Button(row,text="Guardar WAV",command=self.export_voice_profile).pack(side="left",padx=2)
+        ttk.Button(row,text="Eliminar perfil",command=self.delete_voice_profile).pack(side="left",padx=2)
+        ttk.Label(form,text="Aplicar voz a una canción existente",style="Field.TLabel",font=("Segoe UI",14,"bold")).pack(anchor="w",pady=(8,3))
+        ttk.Label(form,text="Selecciona el perfil arriba y un WAV propio/autorizado. Se conserva una copia del instrumental extraído; la separación y el timbre son aproximados.",wraplength=620).pack(anchor="w")
+        self.voice_apply_button=ttk.Button(form,text="Sustituir cantante de un WAV",command=lambda:self.apply_existing_voice(False))
+        self.voice_apply_button.pack(fill="x",pady=3)
+        ttk.Button(form,text="Aplicar a canción seleccionada en biblioteca",command=lambda:self.apply_existing_voice(True)).pack(fill="x",pady=3)
+        ttk.Button(form,text="Instalar componentes de clonación",command=self.install_voice_components).pack(fill="x",pady=5)
+        self.voice_status=ttk.Label(form,text="HTDemucs Q8 + Seed-VC Q8 + audio.cpp · experimentales, instalación opcional.",wraplength=620)
+        self.voice_status.pack(anchor="w")
+
+    def refresh_voices(self):
+        items=voice_profiles.profiles(self.voice_root)
+        old=self.voice.get()
+        previous=self.edit_target_voice.get()
+        self.voice_profiles={"Perfil · "+p["name"]:p for p in items}
+        self.voice.configure(values=[v for v in VOICES if v!="Instrumental"]+list(self.voice_profiles))
+        self.voice.set(old if old in self.voice["values"] else "Automática")
+        self.edit_target_voice.configure(values=["Original / automática",*self.voice_profiles])
+        self.edit_target_voice.set(previous if previous in self.edit_target_voice["values"] else "Original / automática")
+        selected=self.voice_list.curselection()
+        self.voice_list.delete(0,"end")
+        for label,p in self.voice_profiles.items():
+            self.voice_list.insert("end",f"{label} · {p['kind']} · {p['seconds']:.1f} s")
+        if items:
+            self.voice_list.selection_set(min(selected[0],len(items)-1) if selected else 0)
+
+    def selected_profile(self):
+        selected=self.voice_list.curselection()
+        if not selected:
+            messagebox.showinfo("Mis voces","Selecciona un perfil.")
+            return None
+        return list(self.voice_profiles.values())[selected[0]]
+
+    def discard_recording(self):
+        if self.voice_record_timer:
+            self.w.after_cancel(self.voice_record_timer)
+            self.voice_record_timer=None
+        try:
+            self.recording.close()
+        except OSError:
+            pass
+        if self.voice_temp:
+            self.voice_temp.cleanup()
+            self.voice_temp=None
+
+    def start_voice_recording(self):
+        if self.busy or self.recording.active:
+            return
+        if not self.voice_consent.get():
+            messagebox.showinfo("Mis voces","Confirma que autorizas la grabación.")
+            return
+        self.discard_recording()
+        self.voice_sample=None
+        self.voice_temp=tempfile.TemporaryDirectory(prefix="noel-voice-")
+        try:
+            self.stop_player()
+            self.recording.start()
+            self.record_start=time.monotonic()
+            self.record_button.configure(state="disabled")
+            self.record_tick()
+        except (OSError,ValueError) as exc:
+            self.discard_recording()
+            messagebox.showerror("Micrófono",str(exc))
+
+    def record_tick(self):
+        self.voice_record_timer=None
+        elapsed=time.monotonic()-self.record_start
+        self.voice_sample_label.configure(text=f"Grabando… {int(elapsed)} / 30 s")
+        if elapsed>=30:
+            self.finish_voice_recording()
+        elif self.recording.active:
+            self.voice_record_timer=self.w.after(200,self.record_tick)
+
+    def finish_voice_recording(self):
+        if not self.recording.active:
+            return
+        if self.voice_record_timer:
+            self.w.after_cancel(self.voice_record_timer)
+            self.voice_record_timer=None
+        try:
+            path=Path(self.voice_temp.name)/"sample.wav"
+            self.recording.stop(path)
+            self.voice_sample=path
+            self.voice_sample_label.configure(text="Grabación lista. Escucha y guarda el perfil.")
+        except OSError as exc:
+            messagebox.showerror("Micrófono",str(exc))
+        finally:
+            self.record_button.configure(state="normal")
+
+    def import_voice_sample(self):
+        if self.busy or self.recording.active:
+            return
+        path=filedialog.askopenfilename(filetypes=[("WAV PCM 16 bits","*.wav")])
+        if path:
+            self.stop_player()
+            self.discard_recording()
+            self.voice_sample=Path(path)
+            self.voice_consent.set(False)
+            self.voice_sample_label.configure(text=self.voice_sample.name)
+
+    def save_voice_profile(self):
+        if self.busy or self.recording.active or not self.voice_sample:
+            return
+        name=self.voice_name.get()
+        consent=self.voice_consent.get()
+        kind=self.voice_kind.get()
+        source=self.voice_sample
+        def work():
+            data=voice_profiles.create_profile(self.voice_root,source,name,consent,kind)
+            self.events.put(("voice_profile",data))
+            return "Perfil vocal guardado."
+        self.run(work,"Guardando voz")
+
+    def play_voice_profile(self):
+        profile=self.selected_profile()
+        if profile:
+            try:
+                self.play_editor_file(voice_profiles.reference(self.voice_root,profile))
+            except (OSError,ValueError) as exc:
+                messagebox.showerror("Mis voces",str(exc))
+
+    def export_voice_profile(self):
+        profile=self.selected_profile()
+        if not profile:
+            return
+        path=filedialog.asksaveasfilename(defaultextension=".wav",filetypes=[("Audio WAV","*.wav")])
+        if path:
+            try:
+                export_audio(voice_profiles.reference(self.voice_root,profile),path,"wav")
+            except (OSError,ValueError) as exc:
+                messagebox.showerror("Mis voces",str(exc))
+
+    def delete_voice_profile(self):
+        if self.busy or self.recording.active:
+            return
+        profile=self.selected_profile()
+        if profile and messagebox.askyesno("Mis voces","¿Eliminar este perfil local? Las canciones ya generadas se conservan."):
+            try:
+                self.stop_player()
+                voice_profiles.remove_profile(self.voice_root,profile)
+                self.refresh_voices()
+            except (OSError,ValueError) as exc:
+                messagebox.showerror("Mis voces",str(exc))
+
+    def install_voice_components(self):
+        if self.busy or self.recording.active:
+            return
+        mode=self.device_mode
+        total=sum(x[1] for x in voice_engine.MODELS.values())+sum(x[1] for x in voice_engine.ASSETS[voice_engine.kind(mode)])
+        if not messagebox.askyesno("Componentes vocales",f"Descargar desde Hugging Face y GitHub hasta {total/1e9:.2f} GB para {DEVICES[mode]}? Se verifican los archivos. Modelos de terceros sujetos a sus licencias."):
+            return
+        def work():
+            voice_engine.install(RUNTIME,self.models,mode,self.cancel,lambda n,b,t:self.events.put(("progress",(n,b,t))))
+            self.events.put(("voice_components","Componentes descargados y verificados. Inferencia experimental."))
+            return "Componentes vocales instalados."
+        self.run(work,"Instalación vocal",download=True)
+
+    def voice_precheck(self):
+        mode=self.device_mode
+        if not voice_engine.binary(RUNTIME,mode,verify=False) or not all(voice_engine.model_path(self.models,k).is_file() for k in voice_engine.MODELS):
+            messagebox.showinfo("Mis voces","Instala primero HTDemucs, Seed-VC y audio.cpp desde Mis voces.")
+            self.show_page("Mis voces")
+            return False
+        info=self.hardware or {}
+        gpu=info.get("gpu") or {}
+        if mode!="cpu" and not gpu:
+            messagebox.showinfo("Mis voces","No se detectó NVIDIA. Ajusta el procesador en Configuración.")
+            self.show_page("Configuración")
+            return False
+        if mode=="cpu" or (gpu.get("free_mib") or 0)<6000 or (info.get("ram_available") or 0)<6*2**30:
+            return messagebox.askyesno("Recursos de conversión vocal","La conversión puede tardar mucho o agotar memoria. Recomendamos una prueba de 15–30 segundos. ¿Continuar?")
+        return True
+
+    def apply_voice_result(self,result,profile,title=None):
+        source=self.runs/result["version"]/"song.wav"
+        request=json.loads(source.with_name("version.json").read_text("utf-8"))["request"]
+        return voice_engine.convert(RUNTIME,self.models,self.runs,source,voice_profiles.reference(self.voice_root,profile),
+                                    profile,self.device_mode,self.cancel,lambda s:self.events.put(("stage",s)),request,title)
+
+    def apply_existing_voice(self,library=False):
+        if self.busy or self.recording.active:
+            return
+        profile=self.selected_profile()
+        if not profile:
+            return
+        request=None
+        title=None
+        if library:
+            selection=self.history.curselection()
+            if not selection:
+                messagebox.showinfo("Mis voces","Selecciona una canción en la biblioteca primero.")
+                return
+            index=selection[0]
+            source=self.files[index]
+            request=json.loads(source.with_name("version.json").read_text("utf-8"))["request"]
+            title=self.song_data[index]["title"]
+        else:
+            path=filedialog.askopenfilename(filetypes=[("WAV PCM","*.wav")])
+            if not path:
+                return
+            source=Path(path)
+        if not messagebox.askyesno("Mis voces","¿Confirmas que tienes autorización sobre la grabación de origen y la voz elegida?"):
+            return
+        if not self.voice_precheck():
+            return
+        def work():
+            result=voice_engine.convert(RUNTIME,self.models,self.runs,source,voice_profiles.reference(self.voice_root,profile),
+                                        profile,self.device_mode,self.cancel,lambda s:self.events.put(("stage",s)),request,title)
+            self.events.put(("song",("Conversión vocal lista",result["version"])))
+            return "Nueva versión vocal guardada."
+        self.run(work,"Conversión vocal")
+
     def build_editor(self, parent):
         scroll = ScrollFrame(parent)
         scroll.pack(fill="both", expand=True)
@@ -893,6 +1155,7 @@ class Studio:
         self.edit_language=self.combo(form,"Idioma",list(LANGUAGES),"Idioma del canto.")
         self.edit_model=self.combo(form,"Modelo",list(MUSIC.values()),"Turbo Q8 recomendado inicialmente; otras variantes experimentales.")
         self.edit_model.set(MUSIC[self.music_default])
+        self.edit_target_voice=self.combo(form,"Voz guardada (opcional)",["Original / automática"],"Aplicar un perfil después de la edición. No se aplica a Repaint con PCM exacto.")
         self.cover_box=ttk.Frame(form)
         self.edit_fidelity=self.combo(self.cover_box,"Fidelidad a la referencia",list(editor.FIDELITY),"Alta favorece conservar la fuente, pero puede dificultar cambios de letra.")
         self.edit_fidelity.set("Equilibrada")
@@ -938,6 +1201,9 @@ class Studio:
             "repaint":"Regenera únicamente el intervalo solicitado. Con PCM exacto activo, los datos fuera del intervalo se copian del WAV original; puede haber una unión audible.",
             "voice":"Crea música nueva usando un fragmento vocal autorizado de 1–30 segundos como referencia tímbrica. No garantiza la misma voz."
         }[mode])
+        self.edit_target_voice.configure(state="disabled" if mode=="repaint" else "readonly")
+        if mode=="repaint":
+            self.edit_target_voice.current(0)
         self.edit_consent.set(False)
 
     def set_edit_source(self,path,lyrics=None,caption=None):
@@ -1017,14 +1283,19 @@ class Studio:
             return
         fidelity=self.edit_fidelity.get()
         preserve=self.exact_pcm.get()
+        profile=self.voice_profiles.get(self.edit_target_voice.get()) if mode!="repaint" else None
+        if profile and not self.voice_precheck():
+            return
         self.edit_status.configure(text="Preparando edición experimental…")
         def work():
             with self.engine_session(music=model) as (engine,props):
                 self.events.put(("stage","Editando audio con ACE-Step"))
                 result=editor.edit_song(engine,props,self.runs,source,mode,caption,lyrics,language,model,
                                         secrets.randbelow(2**31),fidelity,start,end,seconds,True,preserve)
-                self.events.put(("edited",result["version"]))
-                return "Versión editada guardada."
+            if profile:
+                result=self.apply_voice_result(result,profile)
+            self.events.put(("edited",result["version"]))
+            return "Versión editada guardada."
         self.run(work,"Edición musical")
 
     def update_copy_button(self):
@@ -1529,6 +1800,9 @@ class Studio:
         if seconds > 120 or model == "sft":
             if not messagebox.askyesno("Configuración experimental", "Esta duración o modelo aún no tiene benchmark suficiente en tu equipo. ¿Continuar?"):
                 return
+        profile=None if self.instrumental.get() else self.voice_profiles.get(self.voice.get())
+        if profile and not self.voice_precheck():
+            return
         seed = secrets.randbelow(2**31)
         language = LANGUAGES[self.language.get()][0]
         def work():
@@ -1541,8 +1815,10 @@ class Studio:
                                 total_seconds=result["total_s"], generated_seconds=result["actual_seconds"]))
                 if title:
                     write_json(self.runs/result["version"]/"display.json", {"title": title})
-                self.events.put(("song", (f"{title or 'Nueva canción'} · {result['actual_seconds']:.0f} s · lista para escuchar", result["version"])))
-                return "Canción guardada · " + result["version"]
+            if profile:
+                result=self.apply_voice_result(result,profile,title)
+            self.events.put(("song", (f"{title or 'Nueva canción'} · {result['actual_seconds']:.0f} s · lista para escuchar", result["version"])))
+            return "Canción guardada · " + result["version"]
         self.run(work, "Generación")
 
 
