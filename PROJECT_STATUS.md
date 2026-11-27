@@ -19,3 +19,5 @@ Separación de distribución: compilación CUDA manual, actualización de aplica
 Interfaz creativa: reproductor fijo, tarjetas, exportación MP3, ayuda flotante, compositor integrado multilingüe y estructura personalizada, instrumentos, estados de modelos y mantenimiento explicado. Pendientes las pruebas reales de voz, idioma, instrumentación y exportación en el equipo objetivo. Sin cambios de motor CUDA.
 
 Centro de modelos: importación/exportación verificada, Qwen independiente con instalación por dispositivo, Turbo Q4, preferencias persistentes y copiar letra. Pendiente comprobar inferencia local Qwen y CPU/híbrido reales. No se recompila ACE-Step.
+
+Editor musical fase 1: adaptador multipart nativo, Cover sin FSQ, Repaint (PCM exterior opcional), referencia tímbrica y guardado independiente. Pendientes pruebas reales RTX 3070 y separación/síntesis vocal. No se cambia el motor fijado ni se descargan modelos.

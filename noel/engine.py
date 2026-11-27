@@ -6,6 +6,7 @@ import re
 import sys
 import time
 import wave
+import uuid
 from email.message import Message
 
 from .models import MODELS
@@ -43,15 +44,33 @@ def unpack(content_type, data, seconds):
     return wav, latent, actual
 
 
+def multipart_request(payload, parts):
+    """The pinned server accepts request JSON, source audio and timbre reference."""
+    if not parts or not set(parts).issubset({"audio","ref_audio","src_latents","ref_latents"}):
+        raise ValueError("Partes de audio no admitidas.")
+    boundary = "noel-" + uuid.uuid4().hex
+    chunks = []
+    def add(name, filename, content_type, data):
+        chunks.extend([f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; filename="{filename}"\r\nContent-Type: {content_type}\r\n\r\n'.encode("ascii"), data, b"\r\n"])
+    add("request","request.json","application/json",json.dumps(payload,ensure_ascii=False).encode("utf-8"))
+    for name,data in parts.items():
+        if not isinstance(data,bytes) or not data or len(data)>64*1024*1024:
+            raise ValueError("Entrada de audio vacía o demasiado grande.")
+        latent = name.endswith("latents")
+        add(name, name+(".vae" if latent else ".wav"), "application/octet-stream" if latent else "audio/wav", data)
+    chunks.append(f"--{boundary}--\r\n".encode("ascii"))
+    return boundary,b"".join(chunks)
+
+
 class Engine:
     def __init__(self, port=8085, cancelled=None):
         self.cancelled = cancelled
         self.port = port
 
-    def request(self, method, path, body=None):
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
+    def request(self, method, path, body=None, content_type="application/json", timeout=30):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
         try:
-            conn.request(method, path, body, {"Content-Type": "application/json"})
+            conn.request(method, path, body, {"Content-Type": content_type})
             response = conn.getresponse()
             data = response.read(MAX_BODY + 1)
             if len(data) > MAX_BODY:
@@ -98,8 +117,15 @@ class Engine:
             raise ValueError("La letra generada supera el límite del editor.")
         return lyrics
 
-    def job(self, endpoint, payload, timeout):
-        job = self.metadata("POST", endpoint, json.dumps(payload).encode())["id"]
+    def edit(self, payload, parts, timeout=900):
+        return unpack(*self.job("/synth", payload, timeout, parts=parts), payload["duration"])
+
+    def job(self, endpoint, payload, timeout, parts=None):
+        if parts is None:
+            job = self.metadata("POST", endpoint, json.dumps(payload).encode())["id"]
+        else:
+            boundary, body = multipart_request(payload, parts)
+            job = json.loads(self.request("POST", endpoint, body, "multipart/form-data; boundary="+boundary, timeout=180)[1])["id"]
         if not isinstance(job, str) or not re.fullmatch(r"[0-9a-f]{16}", job):
             raise ValueError("Identificador de trabajo incorrecto.")
         print(f"Trabajo {job} recibido por el motor.", flush=True)

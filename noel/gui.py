@@ -28,6 +28,7 @@ from .audio_export import export_audio
 from .creative_ui import ScrollFrame, tooltip, gradient
 from .ui_theme import create_style
 from .studio import render, write_json
+from . import editor
 
 
 class Studio:
@@ -81,14 +82,14 @@ class Studio:
         content.pack(side="left", fill="both", expand=True)
         content.columnconfigure(0, weight=1)
         content.rowconfigure(0, weight=1)
-        self.panels = {name: ttk.Frame(content, padding=12) for name in ("Inicio", "Crear música", "Modelos", "Configuración")}
+        self.panels = {name: ttk.Frame(content, padding=12) for name in ("Inicio", "Crear música", "Editor musical", "Modelos", "Configuración")}
         self.nav_buttons = {}
         for name, panel in self.panels.items():
             panel.grid(row=0, column=0, sticky="nsew")
             b = ttk.Button(sidebar, text=name, style="Nav.TButton", command=lambda n=name: self.show_page(n))
             b.pack(fill="x", pady=4)
             self.nav_buttons[name] = b
-        home, create, setup, settings = self.panels.values()
+        home, create, edit_panel, setup, settings = self.panels.values()
         hero = tk.Canvas(home, height=94, highlightthickness=0)
         hero.pack(fill="x", pady=(0, 8))
         hero.bind("<Configure>", lambda e: gradient(hero, e.width, e.height, "#d60980", "#136fa3",
@@ -181,6 +182,7 @@ class Studio:
         self.latest.pack(anchor="w", pady=8)
         self.create_history = self.make_history(results)
         self.build_composer(self.results_container)
+        self.build_editor(edit_panel)
         model_scroll = ScrollFrame(setup)
         model_scroll.pack(fill="both", expand=True)
         setup = model_scroll.inner
@@ -432,6 +434,7 @@ class Studio:
         self.download_sample = None
         self.generate_button.state(["disabled"])
         self.compose_button.state(["disabled"])
+        self.edit_button.state(["disabled"])
         self.progress.configure(mode="determinate" if download else "indeterminate", value=0, maximum=100)
         self.progress.pack(side="right", padx=6)
         if not download:
@@ -487,6 +490,10 @@ class Studio:
                 self.lyrics.insert("1.0", text)
                 self.lyric_notice.configure(text="Letra creada. Revísala y edítala antes de generar música.")
                 self.hide_composer()
+            elif kind == "edited":
+                self.edit_result_path = self.runs/text/"song.wav"
+                self.new_version = text
+                self.edit_status.configure(text="Nueva versión guardada. El original no se modificó.")
             elif kind == "song":
                 label, version = text
                 self.latest.configure(text=label)
@@ -500,9 +507,12 @@ class Studio:
                 self.cancel_button.pack_forget()
                 self.generate_button.state(["!disabled"])
                 self.compose_button.state(["!disabled"])
+                self.edit_button.state(["!disabled"])
                 self.status.set(text)
                 if kind == "error" and not self.closing:
-                    if self.action == "Composición":
+                    if self.action == "Edición musical":
+                        self.edit_status.configure(text=text)
+                    elif self.action == "Composición":
                         self.lyric_notice.configure(text=text)
                     else:
                         messagebox.showerror("Noel Music AI", text)
@@ -774,6 +784,167 @@ class Studio:
                     except subprocess.TimeoutExpired:
                         proc.kill()
                         proc.wait()
+
+    def build_editor(self, parent):
+        scroll = ScrollFrame(parent)
+        scroll.pack(fill="both", expand=True)
+        form=scroll.inner
+        ttk.Label(form,text="Editor musical",font=("Segoe UI",22,"bold")).pack(anchor="w")
+        ttk.Label(form,text="Experimenta con audio propio o autorizado. Todas las ediciones crean una nueva versión.",wraplength=650).pack(anchor="w",pady=6)
+        self.edit_mode=self.combo(form,"Operación",list(editor.MODES.values()),"Cover conserva referencias aproximadas; Repaint modifica un intervalo; referencia vocal orienta el timbre, no clona una identidad exacta.")
+        self.edit_mode.bind("<<ComboboxSelected>>",self.update_editor)
+        self.edit_source=None
+        self.edit_result_path=None
+        row=ttk.Frame(form)
+        row.pack(fill="x",pady=5)
+        ttk.Button(row,text="Abrir WAV",command=self.pick_edit_source).pack(side="left",padx=2)
+        ttk.Button(row,text="Usar canción seleccionada",command=self.pick_library_source).pack(side="left",padx=2)
+        ttk.Button(row,text="▶ Original",command=lambda:self.play_editor_file(self.edit_source)).pack(side="left",padx=2)
+        self.edit_source_label=ttk.Label(form,text="Sin audio de referencia",wraplength=650)
+        self.edit_source_label.pack(anchor="w")
+        self.edit_explanation=ttk.Label(form,wraplength=650)
+        self.edit_explanation.pack(anchor="w",pady=6)
+        self.field_label(form,"Descripción musical","Describe el estilo a conservar o el nuevo arreglo.")
+        self.edit_caption=ttk.Entry(form)
+        self.edit_caption.insert(0,"Preserve the musical arrangement, rhythm, melody and vocal character of the reference")
+        self.edit_caption.pack(fill="x")
+        self.field_label(form,"Letra nueva","Para editar un fragmento introduce la letra completa actualizada, incluyendo las partes no editadas.")
+        self.edit_lyrics=tk.Text(form,height=8,wrap="word")
+        self.edit_lyrics.pack(fill="x")
+        self.edit_language=self.combo(form,"Idioma",list(LANGUAGES),"Idioma del canto.")
+        self.edit_model=self.combo(form,"Modelo",list(MUSIC.values()),"Turbo Q8 recomendado inicialmente; otras variantes experimentales.")
+        self.edit_model.set(MUSIC[self.music_default])
+        self.cover_box=ttk.Frame(form)
+        self.edit_fidelity=self.combo(self.cover_box,"Fidelidad a la referencia",list(editor.FIDELITY),"Alta favorece conservar la fuente, pero puede dificultar cambios de letra.")
+        self.edit_fidelity.set("Equilibrada")
+        self.repaint_box=ttk.Frame(form)
+        ttk.Label(self.repaint_box,text="Intervalo de edición (segundos)").pack(anchor="w")
+        times=ttk.Frame(self.repaint_box)
+        times.pack(fill="x")
+        self.edit_start=ttk.Entry(times,width=10)
+        self.edit_start.insert(0,"0")
+        self.edit_start.pack(side="left")
+        ttk.Label(times,text=" a ").pack(side="left")
+        self.edit_end=ttk.Entry(times,width=10)
+        self.edit_end.insert(0,"10")
+        self.edit_end.pack(side="left")
+        self.exact_pcm=tk.BooleanVar(value=True)
+        ttk.Checkbutton(self.repaint_box,text="Conservar PCM exacto fuera del fragmento (48 kHz estéreo)",variable=self.exact_pcm).pack(anchor="w")
+        self.voice_box=ttk.Frame(form)
+        ttk.Label(self.voice_box,text="Duración de nueva canción (segundos)").pack(anchor="w")
+        self.edit_duration=ttk.Entry(self.voice_box,width=12)
+        self.edit_duration.insert(0,"30")
+        self.edit_duration.pack(anchor="w")
+        self.edit_consent=tk.BooleanVar(value=False)
+        self.edit_consent_widget=ttk.Checkbutton(form,text="Tengo autorización para editar el audio y utilizar las voces de referencia.",variable=self.edit_consent)
+        self.edit_consent_widget.pack(anchor="w",pady=6)
+        self.edit_button=ttk.Button(form,text="✦ Generar versión editada",style="Accent.TButton",command=self.run_editor)
+        self.edit_button.pack(fill="x",pady=5)
+        self.edit_status=ttk.Label(form,text="Pista instrumental idéntica + letra nueva: módulo de separación y síntesis vocal pendiente.",wraplength=650)
+        self.edit_status.pack(anchor="w",pady=6)
+        result=ttk.Frame(form)
+        result.pack(fill="x")
+        ttk.Button(result,text="▶ Escuchar resultado",command=lambda:self.play_editor_file(self.edit_result_path)).pack(side="left",padx=2)
+        ttk.Button(result,text="Ver resultado en biblioteca",command=lambda:self.show_page("Crear música")).pack(side="left",padx=2)
+        self.update_editor()
+
+    def update_editor(self,_=None):
+        mode=next(k for k,v in editor.MODES.items() if v==self.edit_mode.get())
+        for box in (self.cover_box,self.repaint_box,self.voice_box):
+            box.pack_forget()
+        box={"cover":self.cover_box,"repaint":self.repaint_box,"voice":self.voice_box}[mode]
+        box.pack(fill="x",before=self.edit_consent_widget,pady=5)
+        self.edit_explanation.configure(text={
+            "cover":"Regenera toda la mezcla guiándose por el original. No conserva exactamente la pista ni la identidad vocal.",
+            "repaint":"Regenera únicamente el intervalo solicitado. Con PCM exacto activo, los datos fuera del intervalo se copian del WAV original; puede haber una unión audible.",
+            "voice":"Crea música nueva usando un fragmento vocal autorizado de 1–30 segundos como referencia tímbrica. No garantiza la misma voz."
+        }[mode])
+        self.edit_consent.set(False)
+
+    def set_edit_source(self,path,lyrics=None,caption=None):
+        try:
+            _,duration,_=editor.read_wav(path)
+        except Exception as exc:
+            messagebox.showerror("Editor musical",str(exc))
+            return
+        self.edit_source=Path(path)
+        self.edit_consent.set(False)
+        self.edit_source_label.configure(text=f"{self.edit_source.name} · {duration:.2f} s")
+        if lyrics is not None:
+            self.edit_lyrics.delete("1.0","end")
+            self.edit_lyrics.insert("1.0",lyrics)
+        if caption:
+            self.edit_caption.delete(0,"end")
+            self.edit_caption.insert(0,caption)
+        self.edit_end.delete(0,"end")
+        self.edit_end.insert(0,str(min(10, duration)))
+
+    def pick_edit_source(self):
+        if self.busy:
+            return
+        path=filedialog.askopenfilename(filetypes=[("WAV PCM","*.wav")])
+        if path:
+            self.set_edit_source(path)
+
+    def pick_library_source(self):
+        if self.busy:
+            return
+        if not self.history.curselection():
+            messagebox.showinfo("Editor musical","Selecciona primero una canción en Inicio o Crear música.")
+            return
+        index=self.history.curselection()[0]
+        path=self.files[index]
+        manifest=json.loads(path.with_name("version.json").read_text("utf-8"))
+        request=manifest["request"]
+        self.set_edit_source(path,request.get("lyrics",""),request.get("caption",""))
+
+    def play_editor_file(self,path):
+        if path is None or not path.is_file():
+            messagebox.showinfo("Editor musical","Selecciona un audio o genera una versión.")
+            return
+        try:
+            self.player.open(path)
+            self.playing_file=path
+            self.now_playing.configure(text=path.name)
+            self.volume_changed(self.volume.get())
+            peaks=envelope(path)
+            self.waveform.delete("all")
+            width=self.waveform.winfo_width()/len(peaks)
+            for i,peak in enumerate(peaks):
+                self.waveform.create_line(i*width,15-14*peak,i*width,16+14*peak,fill="#ee61c0")
+        except (OSError,ValueError) as exc:
+            messagebox.showerror("Reproducción",str(exc))
+
+    def run_editor(self):
+        if self.busy:
+            return
+        if self.edit_source is None or not self.edit_consent.get():
+            messagebox.showinfo("Editor musical","Selecciona audio y confirma la autorización.")
+            return
+        mode=next(k for k,v in editor.MODES.items() if v==self.edit_mode.get())
+        model=next(k for k,v in MUSIC.items() if v==self.edit_model.get())
+        source=self.edit_source
+        caption=self.edit_caption.get().strip()
+        lyrics=self.edit_lyrics.get("1.0","end").strip()
+        language=LANGUAGES[self.edit_language.get()][0]
+        try:
+            start=float(self.edit_start.get()) if mode=="repaint" else 0.
+            end=float(self.edit_end.get()) if mode=="repaint" else 10.
+            seconds=int(self.edit_duration.get()) if mode=="voice" else 30
+        except ValueError:
+            messagebox.showerror("Editor musical","Revisa los tiempos.")
+            return
+        fidelity=self.edit_fidelity.get()
+        preserve=self.exact_pcm.get()
+        self.edit_status.configure(text="Preparando edición experimental…")
+        def work():
+            with self.engine_session(music=model) as (engine,props):
+                self.events.put(("stage","Editando audio con ACE-Step"))
+                result=editor.edit_song(engine,props,self.runs,source,mode,caption,lyrics,language,model,
+                                        secrets.randbelow(2**31),fidelity,start,end,seconds,True,preserve)
+                self.events.put(("edited",result["version"]))
+                return "Versión editada guardada."
+        self.run(work,"Edición musical")
 
     def copy_lyrics(self):
         self.w.clipboard_clear()

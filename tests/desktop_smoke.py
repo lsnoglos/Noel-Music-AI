@@ -19,7 +19,7 @@ def main():
             f.writeframes(b"\x01\x02\x03\x04"*48000)
         window = tk.Tk()
         studio = Studio(window)
-        assert set(studio.panels) == {"Inicio", "Crear música", "Modelos", "Configuración"}
+        assert set(studio.panels) == {"Inicio", "Crear música", "Editor musical", "Modelos", "Configuración"}
         assert studio.modern, "ttkbootstrap no se activó"
         assert "Niño" in studio.voice["values"]
         assert studio.model_choice.current() == 0
@@ -64,6 +64,12 @@ def main():
                 studio.lyrics.insert("1.0","Hola mundo")
                 studio.copy_lyrics()
                 assert window.clipboard_get()=="Hola mundo"
+                studio.show_page("Editor musical")
+                studio.set_edit_source(run/"song.wav","Hola","Demo")
+                assert studio.edit_source == run/"song.wav"
+                studio.edit_mode.current(1)
+                studio.update_editor()
+                assert studio.repaint_box.winfo_manager()=="pack"
             except Exception as exc:
                 failures.append(exc)
             finally:
