@@ -13,7 +13,18 @@ def main():
         studio = Studio(window)
         assert set(studio.panels) == {"Inicio", "Crear música", "Modelos", "Configuración"}
         assert studio.modern, "ttkbootstrap no se activó"
-        assert "Instrumental" in studio.voice["values"]
+        assert "Niño" in studio.voice["values"]
+        studio.instrumental.set(True)
+        studio.toggle_instrumental()
+        assert str(studio.voice["state"]) == "disabled"
+        studio.instrumental.set(False)
+        studio.toggle_instrumental()
+        studio.lyric_dialog()
+        # Startup inspection may still be active; verify the panel directly.
+        studio.structure.set("Personalizada")
+        studio.toggle_sections()
+        assert len(studio.sections) == 6
+        assert "Inglés" in studio.lyric_language["values"]
         assert studio.model_choice.current() == 0
         studio.show_page("Crear música")
         studio.duration.set(300)

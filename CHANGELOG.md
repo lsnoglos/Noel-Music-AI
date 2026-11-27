@@ -12,3 +12,5 @@ Arranque gráfico, entorno privado opcional, gestión de descargas, biblioteca m
 - Descargas individuales con progreso, reproductor compartido y espectro real; tema ttkbootstrap con fallback.
 
 - Distribución separada: actualización ligera, portable con reutilización del motor verificado y compilación CUDA manual.
+
+- Interfaz creativa: tarjetas, controles de reproducción visibles, exportación MP3, preferencias de idioma/voz/instrumentos, compositor integrado y ayuda flotante.
