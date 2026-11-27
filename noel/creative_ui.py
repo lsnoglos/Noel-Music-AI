@@ -78,3 +78,77 @@ def gradient(canvas, width, height, start, end, title, subtitle, play=False):
     canvas.create_text(12, height/2-12, anchor="w", text=title, fill="white", width=max(60,width-(72 if play else 24)),
                        font=("Segoe UI",14 if play else 20,"bold"))
     canvas.create_text(12, height-13, anchor="w", text=subtitle, fill="#fff1fb", font=("Segoe UI",10))
+
+
+class PianoLoader(tk.Canvas):
+    """Silent five-key activity animation. The sweep is not an inference percentage."""
+    def __init__(self,parent):
+        super().__init__(parent,width=116,height=35,highlightthickness=0,bg="#13172b")
+        self.timer=None
+        self.phase=0
+        self.white=[]
+        self.black=[]
+        for i in range(5):
+            x=2+23*i
+            self.white.append(self.create_rectangle(x,2,x+21,33,fill="#f1edf9",outline="#706489"))
+        for i in (0,1,3):
+            x=17+23*i
+            self.black.append((i+.7,self.create_rectangle(x,2,x+12,21,fill="#28223c",outline="#7762ab")))
+    def tick(self):
+        self.timer=None
+        position=self.phase if self.phase<=4 else 8-self.phase
+        for i,key in enumerate(self.white):
+            self.itemconfigure(key,fill="#f05ab6" if abs(i-position)<.6 else "#cbb9ee" if abs(i-position)<1.5 else "#f1edf9")
+        for i,key in self.black:
+            self.itemconfigure(key,fill="#8f408e" if abs(i-position)<.8 else "#28223c")
+        self.phase=(self.phase+.5)%8
+        self.timer=self.after(100,self.tick)
+    def start(self):
+        if self.timer is None:
+            self.phase=0
+            self.tick()
+    def stop(self):
+        if self.timer is not None:
+            self.after_cancel(self.timer)
+            self.timer=None
+        self.phase=0
+
+
+def instrument_icon(name, master):
+    """Original tiny instrument-family drawings, no icon files or emoji fonts required."""
+    try:
+        from PIL import Image, ImageDraw, ImageTk
+    except ImportError:
+        return None
+    im=Image.new("RGBA",(40,40))
+    d=ImageDraw.Draw(im)
+    pink="#ec50b3"; purple="#8670dd"; blue="#2dc8cf"; gold="#eab14f"; white="#f7edff"
+    if name in ("Guitarra acústica","Guitarra eléctrica","Requinto","Bajo","Violín","Violonchelo"):
+        d.ellipse((4,17,25,37),fill=pink)
+        d.ellipse((13,13,29,29),fill=pink)
+        d.line((19,23,34,6),fill=gold,width=5)
+        d.line((17,23,35,4),fill=white,width=1)
+        d.ellipse((14,22,20,28),fill="#32244a")
+    elif name in ("Piano","Órgano","Sintetizador","Marimba","Acordeón"):
+        d.rounded_rectangle((3,9,37,32),radius=3,fill=purple)
+        for i in range(5):
+            x=5+i*6
+            d.rectangle((x,12,x+4,29),fill=white)
+        for i in (0,1,3):
+            x=8+i*6
+            d.rectangle((x,12,x+3,22),fill="#32244a")
+    elif name in ("Batería","Bongó","Congas","Güira","Maracas"):
+        d.rounded_rectangle((7,13,33,35),radius=3,fill=blue)
+        d.ellipse((7,7,33,20),fill=gold,outline=white,width=2)
+        d.line((12,19,26,34),fill=white,width=2)
+        d.line((26,19,13,34),fill=white,width=2)
+    elif name=="Arpa":
+        d.line((9,33,18,5,32,33,9,33),fill=gold,width=4,joint="curve")
+        for x in (15,19,23,27):
+            d.line((x,32,x,10+abs(19-x)),fill=white,width=2)
+    else:
+        d.line((7,10,25,10,25,28,12,28),fill=gold,width=5,joint="curve")
+        d.polygon(((5,4),(17,10),(5,16)),fill=gold)
+        for x in (18,23,28):
+            d.ellipse((x,7,x+3,10),fill=white)
+    return ImageTk.PhotoImage(im.resize((15,15),Image.Resampling.LANCZOS),master=master)

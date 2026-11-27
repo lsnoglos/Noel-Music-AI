@@ -58,3 +58,6 @@ Al descargar Qwen por primera vez se ofrece instalar su motor para el dispositiv
 
 ## Editor musical (experimental)
 La nueva sección conecta Cover sin FSQ, Repaint y referencia tímbrica de ACE-Step. No requiere modelos adicionales. Usa WAV PCM 16 bits de 44.1/48 kHz y material autorizado. Repaint permite preservar PCM fuera del intervalo si el WAV es estéreo 48 kHz. La nueva versión nunca sustituye el original. Referencia vocal no equivale a clonación exacta. Separación instrumental y síntesis cantada con letras nuevas permanecen pendientes; consulta docs/research/MUSIC_EDITOR.md.
+
+## Espacio de creación y detección de recursos
+Generar, instrumentos visibles (Automático/Manual) y duración inicial 60 s permanecen sobre el historial o compositor integrado. Animación silenciosa de cinco teclas durante trabajos en segundo plano; reproducción disponible. Descargar todo autoriza todos los modelos del catálogo y los motores pertinentes para el equipo, conserva archivos válidos. Nuevos Qwen3 0.6B Q4 (484 MB) y 1.7B Q4 (1.28 GB) usan llama.cpp con modo no-thinking; calidad y velocidad pendientes de benchmark. Las recomendaciones usan RAM, hilos CPU, GPU NVIDIA y VRAM, no representan garantías ni cambian la selección sin aceptación. En Configuración puedes elegir manualmente.

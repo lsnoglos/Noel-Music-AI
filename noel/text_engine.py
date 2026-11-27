@@ -153,7 +153,8 @@ def compose(root, model, mode, prompt, cancel, stage):
                     data=request(port,"/v1/chat/completions",{
                         "messages":[{"role":"system","content":"Eres un compositor profesional. Sigue el tema, idioma, estructura y requisitos del usuario. Escribe únicamente una letra original cantable con etiquetas de sección. Evita relleno y repeticiones innecesarias. No inventes datos geográficos. No incluyas explicaciones."},
                                     {"role":"user","content":prompt}],
-                        "temperature":.7,"top_p":.9,"max_tokens":2048,"stream":False},timeout=900)
+                        "temperature":.7,"top_p":.9,"max_tokens":2048,"stream":False,
+                        **({"chat_template_kwargs":{"enable_thinking":False}} if model.name.startswith(("Qwen3-0.6B","Qwen3-1.7B")) else {})},timeout=900)
                     results.put((True,data))
                 except Exception as exc:
                     results.put((False,exc))
