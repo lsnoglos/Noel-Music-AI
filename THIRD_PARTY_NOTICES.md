@@ -20,3 +20,5 @@ El bootstrapper utiliza PowerShell y WinForms del sistema. Python 3.14.10 x64 se
 
 - Qwen3-4B-Instruct-2507 (Apache-2.0), cuantización GGUF publicada por LM Studio Community/bartowski, https://huggingface.co/lmstudio-community/Qwen3-4B-Instruct-2507-GGUF .
 - llama.cpp b12635 (MIT), descarga opcional de binarios oficiales y CUDA runtime redistribuido por upstream: https://github.com/ggml-org/llama.cpp/releases/tag/b12635 .
+
+- Qwen3-0.6B y Qwen3-1.7B (Apache-2.0), GGUF Q4_K_M de LM Studio Community: https://huggingface.co/lmstudio-community/Qwen3-0.6B-GGUF y https://huggingface.co/lmstudio-community/Qwen3-1.7B-GGUF. Descargas opcionales con revisión y SHA-256 fijados.

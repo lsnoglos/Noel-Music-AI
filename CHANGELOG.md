@@ -18,3 +18,5 @@ Arranque gráfico, entorno privado opcional, gestión de descargas, biblioteca m
 - Centro de modelos: importar/exportar GGUF, Qwen3 4B, Turbo Q4, selección CPU/GPU/híbrida, modelos predeterminados y copiar letra.
 
 - Editor musical experimental con audio WAV propio/autorizado, cover-nofsq, repaint, referencia tímbrica y versiones no destructivas.
+
+- Espacio de creación reorganizado, piano animado, descarga completa y recomendaciones de recursos; Qwen3 0.6B y 1.7B opcionales.

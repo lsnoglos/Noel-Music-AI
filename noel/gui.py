@@ -20,12 +20,13 @@ from .player import Player, envelope, spectrum
 from .engine import Engine
 from .distribution import available, binary_path, install_engine
 from .models import (MODELS, OPTIONAL, catalog, matches, MUSIC, LYRIC_MODELS, DEVICES,
-                     model_path, required_music, device_warning, transfer_model)
+                     model_path, required_music, device_warning, transfer_model, TEXT_BASES)
 from . import text_engine
 from .presets import (VOICES, MOODS, AMBIENCES, STRUCTURES, LANGUAGES, INSTRUMENTS, SECTIONS,
                       INTENTIONS, COMPLEXITIES, caption as build_caption, lyric_prompt)
 from .audio_export import export_audio
-from .creative_ui import ScrollFrame, tooltip, gradient
+from .creative_ui import ScrollFrame, tooltip, gradient, PianoLoader
+from .hardware import recommend, recommendation_text
 from .ui_theme import create_style
 from .studio import render, write_json
 from . import editor
@@ -49,6 +50,8 @@ class Studio:
         self.model_buttons = {}
         self.model_save_buttons = {}
         self.composing = False
+        self.hardware = None
+        self.advice_seen = set()
         RUNTIME.mkdir(exist_ok=True)
         self.config = RUNTIME / "studio.json"
         self.paths = json.loads(self.config.read_text("utf-8")) if self.config.exists() else {}
@@ -109,14 +112,57 @@ class Studio:
         ttk.Label(create, text="Crear música", font=("Segoe UI", 22, "bold")).pack(anchor="w")
         split = ttk.Frame(create)
         split.pack(fill="both", expand=True, pady=8)
-        split.columnconfigure(0, weight=3)
-        split.columnconfigure(1, weight=2)
+        split.columnconfigure(0, weight=1)
+        split.columnconfigure(1, weight=1)
         split.rowconfigure(0, weight=1)
         form_scroll = self.form_scroll = ScrollFrame(split)
         form_scroll.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         form = form_scroll.inner
-        self.results_container = ttk.Frame(split, padding=(8, 0))
-        self.results_container.grid(row=0, column=1, sticky="nsew")
+        workspace = self.workspace = ttk.Frame(split, padding=(8, 0))
+        workspace.grid(row=0, column=1, sticky="nsew")
+        workspace.pack_propagate(False)
+        self.generate_button = ttk.Button(workspace, text="✦ Generar canción", style="Accent.TButton", command=self.generate)
+        self.generate_button.pack(fill="x", pady=(0, 5))
+        instrument_row = ttk.Frame(workspace)
+        instrument_row.pack(fill="x")
+        self.instrument_label = ttk.Label(instrument_row, text="Instrumentos", font=("Segoe UI",11,"bold"))
+        self.instrument_label.pack(side="left")
+        self.help(instrument_row, "Automático deja elegir al motor; Manual usa tus preferencias de instrumentos. La IA puede desviarse.")
+        mode_row=ttk.Frame(workspace)
+        mode_row.pack(fill="x",pady=(2,2))
+        self.instrument_mode=tk.StringVar(value="auto")
+        for value,label in (("auto","Automático"),("manual","Manual")):
+            ttk.Radiobutton(mode_row,text=label,value=value,variable=self.instrument_mode,command=self.update_instrument_mode).pack(side="left",padx=3)
+        self.instrument_panel = ttk.Frame(workspace)
+        self.instrument_panel.pack(fill="x")
+        self.instrument_vars={}
+        self.instrument_checks={}
+        # Short labels fit the right-hand studio; tooltip keeps the complete instrument name.
+        aliases={"Guitarra acústica":"♪ G. acústica","Guitarra eléctrica":"♪ G. eléctrica","Requinto":"♪ Requinto",
+                 "Piano":"♬ Piano","Bajo":"♪ Bajo","Violín":"♪ Violín","Violonchelo":"♪ Chelo",
+                 "Batería":"◉ Batería","Bongó":"◉ Bongó","Congas":"◉ Congas","Güira":"◉ Güira",
+                 "Maracas":"◉ Maracas","Trompeta":"♫ Trompeta","Saxofón":"♫ Saxofón","Flauta":"♫ Flauta",
+                 "Acordeón":"♬ Acordeón","Marimba":"♬ Marimba","Sintetizador":"♬ Sintetizador",
+                 "Arpa":"♪ Arpa","Órgano":"♬ Órgano"}
+        for i,name in enumerate(INSTRUMENTS):
+            var=tk.BooleanVar(value=False)
+            self.instrument_vars[name]=var
+            check=ttk.Checkbutton(self.instrument_panel,text=aliases.get(name,name),variable=var,
+                                  command=self.update_instrument_label,style="Instrument.TCheckbutton")
+            check.grid(row=i//3,column=i%3,sticky="w",padx=1,pady=0)
+            self.instrument_checks[name]=check
+            tooltip(check,name,delay=800)
+        self.update_instrument_mode()
+        self.duration=tk.IntVar(value=60)
+        self.field_label(workspace,"Duración de la canción","15 a 300 segundos. Comienza con un minuto; en CPU conviene probar 15 segundos.")
+        durations=ttk.Frame(workspace)
+        durations.pack(fill="x",pady=(0,5))
+        ttk.Scale(durations,from_=15,to=300,variable=self.duration).pack(side="left",fill="x",expand=True)
+        self.duration_label=ttk.Label(durations,text="1:00",width=6)
+        self.duration_label.pack(side="right")
+        self.duration.trace_add("write",lambda *_:self.duration_label.configure(text=self.format_time(self.duration.get()*1000)))
+        self.results_container = ttk.Frame(workspace)
+        self.results_container.pack(fill="both",expand=True)
         results = ttk.Frame(self.results_container)
         results.pack(fill="both", expand=True)
         self.results = results
@@ -138,20 +184,6 @@ class Studio:
         self.instrumental = tk.BooleanVar(value=False)
         ttk.Checkbutton(form, text="Instrumental · solo pista, sin voz", variable=self.instrumental, command=self.toggle_instrumental).pack(anchor="w", pady=4)
         self.language = self.combo(form, "Idioma de la canción", list(LANGUAGES), "Indica el idioma de las palabras cantadas. La IA puede desviarse.")
-        instrument_row = ttk.Frame(form)
-        instrument_row.pack(fill="x", pady=4)
-        self.instrument_label = ttk.Label(instrument_row, text="Instrumentos: Automático", wraplength=310)
-        self.instrument_label.pack(side="left", fill="x", expand=True)
-        self.help(instrument_row, "Elige varios instrumentos o deja que la IA decida. Son preferencias, no pistas aisladas.")
-        ttk.Button(instrument_row, text="Elegir", command=self.toggle_instruments).pack(side="right")
-        self.instrument_panel = ttk.Frame(form, padding=6)
-        self.instrument_vars = {}
-        for i, name in enumerate(INSTRUMENTS):
-            var = tk.BooleanVar(value=False)
-            self.instrument_vars[name] = var
-            ttk.Checkbutton(self.instrument_panel, text=name, variable=var, command=self.update_instrument_label).grid(row=i//3, column=i%3, sticky="w", padx=3)
-        ttk.Button(self.instrument_panel, text="Automático", command=self.clear_instruments).grid(row=7, column=0, sticky="w")
-        ttk.Button(self.instrument_panel, text="Listo", command=self.toggle_instruments).grid(row=7, column=1, sticky="w")
         self.field_label(form, "Estilo musical", "Detalles adicionales: instrumentos, ritmo, timbre o producción. Puedes dejarlo vacío.")
         self.prompt = ttk.Entry(form)
         self.prompt.pack(fill="x")
@@ -166,21 +198,14 @@ class Studio:
         tooltip(copy_button, "Copiar letra al portapapeles")
         self.lyrics = tk.Text(form, height=7, wrap="word", font=("Segoe UI", 11), relief="flat")
         self.lyrics.pack(fill="x")
-        self.duration = tk.IntVar(value=120)
-        durations = ttk.Frame(form)
-        durations.pack(fill="x", pady=(6, 0))
-        self.field_label(durations, "Duración (segundos)", "De 15 a 300 segundos. Las canciones largas requieren más memoria; prueba primero 15 segundos.")
-        ttk.Scale(durations, from_=15, to=300, variable=self.duration, command=lambda v: self.duration_label.configure(text=self.format_time(int(float(v))*1000))).pack(side="left", fill="x", expand=True)
-        self.duration_label = ttk.Label(durations, text="2:00", width=6)
-        self.duration_label.pack(side="right")
         self.model_choice = self.combo(form, "Modelo / calidad", list(MUSIC.values()), "Turbo Q8 conserva el perfil probado; Q4 y SFT son experimentales.")
         self.model_choice.set(MUSIC[self.music_default])
-        self.generate_button = ttk.Button(form, text="✦ Generar canción", style="Accent.TButton", command=self.generate)
-        self.generate_button.pack(fill="x", pady=8)
         ttk.Label(results, text="Tus generaciones", font=("Segoe UI", 16, "bold")).pack(anchor="w")
         self.latest = ttk.Label(results, text="Aquí aparecerá la canción generada.", wraplength=270)
         self.latest.pack(anchor="w", pady=8)
-        self.create_history = self.make_history(results)
+        result_scroll = ScrollFrame(results)
+        result_scroll.pack(fill="both",expand=True)
+        self.create_history = self.make_history(result_scroll.inner)
         self.build_composer(self.results_container)
         self.build_editor(edit_panel)
         model_scroll = ScrollFrame(setup)
@@ -189,11 +214,14 @@ class Studio:
         ttk.Label(setup, text="Centro de modelos", font=("Segoe UI", 22, "bold")).pack(anchor="w")
         ttk.Label(setup, text="Descarga, carga un GGUF existente o guarda una copia. Cada archivo se verifica por tamaño y SHA-256.", wraplength=650).pack(anchor="w", pady=8)
         ttk.Button(setup, text="Instalar paquete musical predeterminado", command=lambda: self.install(required_music(self.music_default))).pack(anchor="w", pady=6)
+        ttk.Button(setup, text="↓ Descargar todo · motores y modelos", style="Accent.TButton", command=self.download_all).pack(anchor="w", pady=6)
         self.model_states = {}
         descriptions = {"embedding":"Interpreta las instrucciones musicales", "dit":"Generación rápida · perfil probado",
                         "vae":"Decodificación de audio", "lm":"Compositor musical rápido · seguimiento de instrucciones limitado",
                         "sft":"Generación alternativa · 50 pasos", "turbo4":"Cuantización ligera · CPU experimental",
-                        "qwen":"Compositor generalista · requiere llama.cpp opcional"}
+                        "qwen":"Compositor generalista · requiere llama.cpp opcional",
+                        "qwen06":"Texto ligero · recomendado para CPU modesta · experimental",
+                        "qwen17":"Texto equilibrado · alternativa para CPU/GPU · experimental"}
         for heading, keys in [("Generación musical", MUSIC), ("Composición de letras", LYRIC_MODELS),
                               ("Componentes auxiliares de música", ("embedding","vae"))]:
             ttk.Label(setup, text=heading, font=("Segoe UI", 15, "bold")).pack(anchor="w", pady=(16,4))
@@ -228,6 +256,9 @@ class Studio:
         ttk.Label(settings, text="Procesamiento y modelos predeterminados", font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(10,4))
         self.device_setting = self.combo(settings, "Procesador", list(DEVICES.values()), "CPU: procesamiento local lento. GPU: CUDA. CPU + GPU: ACE-Step usa GPU y Qwen reparte capas.")
         self.device_setting.set(DEVICES[self.device_mode])
+        self.hardware_label=ttk.Label(settings,text="Detectando recursos…",wraplength=650)
+        self.hardware_label.pack(anchor="w",pady=4)
+        ttk.Button(settings,text="Usar recomendación del equipo",command=self.recommend_settings).pack(anchor="w",pady=3)
         self.music_setting = self.combo(settings, "Modelo de música", list(MUSIC.values()), "Se carga al generar música, no al iniciar.")
         self.music_setting.set(MUSIC[self.music_default])
         self.lyrics_setting = self.combo(settings, "Modelo de letras", list(LYRIC_MODELS.values()), "Se carga al componer letras, y se libera después.")
@@ -245,7 +276,8 @@ class Studio:
         self.operation = ttk.Frame(window, padding=(16, 4))
         self.operation.grid(row=1, column=0, sticky="ew")
         ttk.Label(self.operation, textvariable=self.status, wraplength=800).pack(side="left", fill="x", expand=True)
-        self.progress = ttk.Progressbar(self.operation, mode="indeterminate", length=180)
+        self.piano = PianoLoader(self.operation)
+        self.progress = ttk.Progressbar(self.operation, mode="indeterminate", length=140)
         self.cancel_button = ttk.Button(self.operation, text="Cancelar", command=self.cancel.set)
         player = ttk.Frame(window, padding=(16, 6))
         player.grid(row=2, column=0, sticky="ew")
@@ -388,6 +420,7 @@ class Studio:
         self.style.configure("Nav.TButton", background="#392d66", foreground="#ffffff", padding=8)
         self.style.configure("ActiveNav.TButton", background="#cf137e", foreground="#ffffff", padding=8)
         self.style.configure("Accent.TButton", background="#c91382", foreground="#ffffff", padding=8)
+        self.style.configure("Instrument.TCheckbutton", font=("Segoe UI",9), padding=0, background=bg, foreground=fg)
         self.style.map("Accent.TButton", background=[("active", "#ee36a2"), ("disabled", "#675268")])
         self.style.map("ActiveNav.TButton", background=[("active", "#ee36a2")])
         self.style.configure("MutedHeart.TButton", foreground="#9692a7", font=("Segoe UI", 13))
@@ -432,6 +465,8 @@ class Studio:
         self.stage = action
         self.action = action
         self.download_sample = None
+        self.piano.pack(side="right",padx=5)
+        self.piano.start()
         self.generate_button.state(["disabled"])
         self.compose_button.state(["disabled"])
         self.edit_button.state(["disabled"])
@@ -458,6 +493,9 @@ class Studio:
                 self.w.after(200, lambda: self.confirm_install(asset))
             elif kind == "stage":
                 self.stage = text
+            elif kind == "hardware":
+                self.hardware = text
+                self.hardware_label.configure(text=recommendation_text(text,recommend(text)))
             elif kind == "inventory":
                 report, inventory, missing = text
                 self.observed.configure(text=report)
@@ -499,10 +537,12 @@ class Studio:
                 self.latest.configure(text=label)
                 self.new_version = version
                 self.hide_composer()
-                self.show_page("Crear música")
+                # Do not interrupt navigation or playback when a new song arrives.
             else:
                 self.busy = False
                 self.progress.stop()
+                self.piano.stop()
+                self.piano.pack_forget()
                 self.progress.pack_forget()
                 self.cancel_button.pack_forget()
                 self.generate_button.state(["!disabled"])
@@ -517,7 +557,7 @@ class Studio:
                     else:
                         messagebox.showerror("Noel Music AI", text)
                 self.library()
-                if kind == "done" and not self.closing and self.action in ("Instalación de modelos", "Instalación del motor", "Importar modelo", "Instalar motor Qwen"):
+                if kind == "done" and not self.closing and self.action in ("Instalación de modelos", "Instalación del motor", "Importar modelo", "Instalar motor Qwen", "Instalación completa"):
                     self.inspect()
         if self.player.opened:
             try:
@@ -686,6 +726,7 @@ class Studio:
     def inspect(self):
         def work():
             info = snapshot()
+            self.events.put(("hardware",info))
             gpu = info["gpu"] or {}
             rows = [f"{info['os']} {info['architecture']} · Python {sys.version.split()[0]}",
                     f"{gpu.get('name', 'GPU no detectada')} · controlador {gpu.get('driver','—')} · VRAM libre {gpu.get('free_mib','—')} MiB",
@@ -708,7 +749,7 @@ class Studio:
         if self.busy or not keys:
             return
         mode = self.device_mode
-        text_runtime_needed = "qwen" in keys and not (text_engine.runtime_dir(RUNTIME,mode)/"llama-server.exe").is_file()
+        text_runtime_needed = any(k in TEXT_BASES for k in keys) and not (text_engine.runtime_dir(RUNTIME,mode)/"llama-server.exe").is_file()
         total = sum(catalog()[k][1] for k in keys)
         extra = sum(x[1] for x in text_engine.ASSETS[text_engine.kind(mode)]) if text_runtime_needed else 0
         note = f" Incluye motor llama.cpp para {DEVICES[mode]} (hasta {extra/1e6:.0f} MB)." if text_runtime_needed else ""
@@ -731,7 +772,7 @@ class Studio:
     def musical_caption(self):
         return build_caption(self.genres[self.genre.get()], self.mood.get(), self.setting.get(),
                              "Instrumental" if self.instrumental.get() else self.voice.get(), self.prompt.get(),
-                             [name for name,var in self.instrument_vars.items() if var.get()])
+                             [name for name,var in self.instrument_vars.items() if var.get()] if self.instrument_mode.get()=="manual" else [])
 
     @contextmanager
     def engine_session(self, optional=(), music=None):
@@ -951,6 +992,109 @@ class Studio:
         self.w.clipboard_append(self.lyrics.get("1.0","end").strip())
         self.status.set("Letra copiada al portapapeles.")
 
+    def download_all(self):
+        if self.busy:
+            return
+        mode=self.device_mode
+        if self.hardware and not self.hardware.get("gpu"):
+            mode="cpu"
+        modes=["cpu","gpu"] if self.hardware and self.hardware.get("gpu") and mode!="cpu" else ["cpu"]
+        total=sum(x[1] for x in catalog().values())
+        extra=sum(x[1] for device in modes for x in text_engine.ASSETS[text_engine.kind(device)])
+        note=f"Todos los modelos del catálogo: hasta {total/1e9:.2f} GB. Motores de letras: hasta {extra/1e9:.2f} GB. Si el motor musical falta o está dañado, también se descargará el portable compatible. Los archivos válidos se conservan. Se requiere espacio adicional para extraer los motores. ¿Comenzar?"
+        if not messagebox.askyesno("Descargar todo",note):
+            return
+        directory=self.models
+        def work():
+            from .runtime import verify_engine
+            from .models import install
+            try:
+                verify_engine(self.binary())
+            except (OSError,ValueError):
+                asset=available()
+                self.events.put(("stage","Instalando motor musical"))
+                install_engine(ROOT,asset,self.cancel,lambda n,t:self.events.put(("progress",("Motor musical",n,t))))
+            self.verified.clear()
+            install(directory,True,list(catalog()),repair=True,cancel=self.cancel,
+                    progress=lambda name,n,t:self.events.put(("progress",(name,n,t))))
+            for device in modes:
+                if self.cancel.is_set():
+                    raise InterruptedError("Cancelado")
+                text_engine.install_runtime(RUNTIME,device,self.cancel,lambda name,n,t:self.events.put(("progress",(name,n,t))))
+            return "Todos los modelos del catálogo y motores seleccionados están instalados."
+        self.run(work,"Instalación completa",download=True)
+
+    def apply_recommendation(self,rec):
+        self.device_setting.set(DEVICES[rec["device"]])
+        self.music_setting.set(MUSIC[rec["music"]])
+        self.lyrics_setting.set(LYRIC_MODELS[rec["lyrics"]])
+
+    def recommend_settings(self):
+        if self.busy:
+            return
+        if self.hardware is None:
+            self.inspect()
+            return
+        self.apply_recommendation(recommend(self.hardware))
+        self.status.set("Recomendación seleccionada. Pulsa Guardar cambios para aplicarla.")
+
+    def preflight(self, purpose, selected):
+        if self.hardware is None:
+            messagebox.showinfo("Recursos","Primero completa el diagnóstico del equipo.")
+            self.inspect()
+            return False
+        rec=recommend(self.hardware)
+        key="music" if purpose=="music" else "lyrics"
+        gpu=self.hardware.get("gpu") or {}
+        mismatch=self.device_mode!=rec["device"] or selected!=rec[key]
+        caution=not gpu or self.device_mode=="cpu" or (gpu.get("free_mib") or 0)<5500
+        signature=(purpose,self.device_mode,selected,rec["device"],rec[key])
+        if (not mismatch and not caution) or signature in self.advice_seen:
+            return True
+        dialog=tk.Toplevel(self.w)
+        dialog.title("Configuración recomendada")
+        dialog.transient(self.w)
+        dialog.grab_set()
+        frame=ttk.Frame(dialog,padding=16)
+        frame.pack(fill="both",expand=True)
+        ttk.Label(frame,text="Adapta Noel Music AI a tu equipo",font=("Segoe UI",15,"bold")).pack(anchor="w",pady=(0,8))
+        ttk.Label(frame,text=recommendation_text(self.hardware,rec),wraplength=480,justify="left").pack(anchor="w")
+        choice=tk.StringVar(value="cancel")
+        def choose(value):
+            choice.set(value)
+            dialog.destroy()
+        ttk.Button(frame,text="Aceptar recomendación",style="Accent.TButton",command=lambda:choose("accept")).pack(fill="x",pady=(12,4))
+        ttk.Button(frame,text="Elegir yo · Configuración",command=lambda:choose("settings")).pack(fill="x",pady=3)
+        if self.device_mode=="cpu" or gpu:
+            ttk.Button(frame,text="Continuar con mi selección",command=lambda:choose("keep")).pack(fill="x",pady=3)
+        dialog.protocol("WM_DELETE_WINDOW",lambda:choose("cancel"))
+        self.w.wait_window(dialog)
+        answer=choice.get()
+        if answer=="settings":
+            self.show_page("Configuración")
+            return False
+        if answer=="keep":
+            self.advice_seen.add(signature)
+            return True
+        if answer!="accept":
+            return False
+        self.device_mode,self.music_default,self.lyrics_default=rec["device"],rec["music"],rec["lyrics"]
+        self.paths.update(device=self.device_mode,music_model=self.music_default,lyrics_model=self.lyrics_default)
+        write_json(self.config,self.paths)
+        self.apply_recommendation(rec)
+        self.model_choice.set(MUSIC[self.music_default])
+        self.lyric_model_choice.set(LYRIC_MODELS[self.lyrics_default])
+        self.edit_model.set(MUSIC[self.music_default])
+        self.advice_seen.add((purpose,self.device_mode,rec[key],rec["device"],rec[key]))
+        needed=required_music(self.music_default) if purpose=="music" else [self.lyrics_default]
+        if purpose=="lyrics" and self.lyrics_default=="lm":
+            needed=[*required_music(self.music_default),"lm"]
+        if any(not model_path(self.models,k).is_file() for k in needed) or (purpose=="lyrics" and self.lyrics_default in TEXT_BASES and not (text_engine.runtime_dir(RUNTIME,self.device_mode)/"llama-server.exe").is_file()):
+            self.show_page("Modelos")
+            self.status.set("Instala los modelos recomendados y vuelve a generar.")
+            return False
+        return True
+
     def save_preferences(self):
         if self.busy:
             return
@@ -961,14 +1105,16 @@ class Studio:
         missing = [catalog()[key][0] for key in [*required_music(music),lyrics] if not model_path(self.models,key).is_file()]
         if missing:
             warning += "\nModelos pendientes de descargar o cargar: " + ", ".join(missing)
-        if lyrics == "qwen" and not (text_engine.runtime_dir(RUNTIME,device)/"llama-server.exe").is_file():
+        if lyrics in TEXT_BASES and not (text_engine.runtime_dir(RUNTIME,device)/"llama-server.exe").is_file():
             warning += "\nEl motor de letras Qwen para el procesador elegido todavía debe instalarse desde Modelos."
         if warning.strip() and not messagebox.askyesno("Guardar configuración", warning.strip()+"\n\n¿Guardar de todos modos?"):
             return
+        self.advice_seen.clear()
         self.device_mode,self.music_default,self.lyrics_default = device,music,lyrics
         self.paths.update(device=device,music_model=music,lyrics_model=lyrics)
         write_json(self.config,self.paths)
         self.model_choice.set(MUSIC[music])
+        self.edit_model.set(MUSIC[music])
         self.lyric_model_choice.set(LYRIC_MODELS[lyrics])
         self.status.set("Preferencias guardadas. Los modelos se cargan cuando se necesitan.")
         self.inspect()
@@ -1031,15 +1177,20 @@ class Studio:
         button.configure(text="Verificar" if ok else "Reparar" if state.startswith("⚠") else "Reanudar" if state.startswith("↓") else "↓ Descargar")
         self.model_save_buttons[key].configure(state="normal" if ok else "disabled")
 
+    def update_instrument_mode(self):
+        manual=self.instrument_mode.get()=="manual"
+        for check in self.instrument_checks.values():
+            check.configure(state="normal" if manual else "disabled")
+        self.update_instrument_label()
+
     def toggle_instruments(self):
-        if self.instrument_panel.winfo_manager():
-            self.instrument_panel.pack_forget()
-        else:
-            self.instrument_panel.pack(fill="x", after=self.instrument_label.master)
+        # Compatibility with older tests and shortcuts; the list never hides.
+        self.instrument_mode.set("manual")
+        self.update_instrument_mode()
 
     def update_instrument_label(self):
-        names = [name for name, var in self.instrument_vars.items() if var.get()]
-        self.instrument_label.configure(text="Instrumentos: " + (", ".join(names) if names else "Automático"))
+        count = sum(var.get() for var in self.instrument_vars.values())
+        self.instrument_label.configure(text="Instrumentos" + (f" · {count}" if self.instrument_mode.get()=="manual" else ""))
 
     def clear_instruments(self):
         for var in self.instrument_vars.values():
@@ -1128,24 +1279,27 @@ class Studio:
             return
         if self.lyrics.get("1.0", "end").strip() and not messagebox.askyesno("Compositor", "¿Reemplazar la letra actual si se genera correctamente?"):
             return
+        selected = next(k for k,v in LYRIC_MODELS.items() if v==self.lyric_model_choice.get())
+        if not self.preflight("lyrics", selected):
+            return
+        selected = next(k for k,v in LYRIC_MODELS.items() if v==self.lyric_model_choice.get())
         self.lyric_notice.configure(text="Generando letra en " + language + "…")
         self.language.set(language)
-        selected = next(k for k,v in LYRIC_MODELS.items() if v==self.lyric_model_choice.get())
         mode = self.device_mode
-        if selected == "qwen":
-            if not model_path(self.models,"qwen").is_file():
-                self.lyric_notice.configure(text="Descarga o carga Qwen3 desde Modelos.")
+        if selected in TEXT_BASES:
+            if not model_path(self.models,selected).is_file():
+                self.lyric_notice.configure(text="Descarga o carga el Qwen3 seleccionado desde Modelos.")
                 return
             if not text_engine.runtime_dir(RUNTIME,mode).joinpath("llama-server.exe").is_file():
                 self.lyric_notice.configure(text="Instala el motor Qwen desde Modelos para este procesador.")
                 return
         def work():
-            if selected == "qwen":
-                if not self.check_model(*catalog()["qwen"]):
+            if selected in TEXT_BASES:
+                if not self.check_model(*catalog()[selected]):
                     raise ValueError("El archivo Qwen no pasó la verificación SHA-256.")
                 if mode != "cpu" and not snapshot().get("gpu"):
                     raise ValueError("No hay GPU NVIDIA. Selecciona CPU en Configuración.")
-                lyrics = text_engine.compose(RUNTIME,model_path(self.models,"qwen"),mode,prompt,self.cancel,
+                lyrics = text_engine.compose(RUNTIME,model_path(self.models,selected),mode,prompt,self.cancel,
                                             lambda s:self.events.put(("stage",s)))
                 self.events.put(("lyrics",lyrics))
                 return "Letra generada con Qwen3. Revísala antes de crear música."
@@ -1268,6 +1422,9 @@ class Studio:
             messagebox.showinfo("Letra", "Escribe una letra o usa el compositor IA para generar una canción con voz.")
             return
         seconds = max(15, min(300, self.duration.get()))
+        model = next(k for k,v in MUSIC.items() if v==self.model_choice.get())
+        if not self.preflight("music",model):
+            return
         model = next(k for k,v in MUSIC.items() if v==self.model_choice.get())
         if self.device_mode == "cpu" and seconds>30:
             if not messagebox.askyesno("Generación por CPU", "Una canción larga por CPU puede tardar mucho. Recomendamos probar 15 segundos. ¿Continuar?"):

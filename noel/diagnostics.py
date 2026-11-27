@@ -1,5 +1,6 @@
 """Local system-wide measurements. Missing counters stay null."""
 import ctypes
+import os
 import platform
 import shutil
 import subprocess
@@ -36,7 +37,7 @@ def snapshot():
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         error = str(exc)
     total, free = ram()
-    return dict(os=platform.system(), architecture=platform.machine(), gpu=gpu, gpu_error=error,
+    return dict(os=platform.system(), architecture=platform.machine(), cpu=platform.processor(), cpu_threads=os.cpu_count(), gpu=gpu, gpu_error=error,
                 ram_total=total, ram_available=free, disk_free=shutil.disk_usage(".").free)
 
 

@@ -23,6 +23,8 @@ def main():
         assert studio.modern, "ttkbootstrap no se activó"
         assert "Niño" in studio.voice["values"]
         assert studio.model_choice.current() == 0
+        assert studio.duration.get() == 60
+        assert studio.instrument_mode.get()=="auto"
         failures = []
         def check():
             if studio.busy:
@@ -45,6 +47,9 @@ def main():
                 studio.lyric_dialog()
                 window.update_idletasks()
                 assert studio.composing and studio.composer.winfo_ismapped()
+                assert studio.generate_button.winfo_ismapped()
+                assert studio.instrument_panel.winfo_ismapped()
+                assert studio.duration_label.winfo_ismapped()
                 studio.structure.set("Personalizada")
                 studio.toggle_sections()
                 assert len(studio.sections) == 6
@@ -54,6 +59,13 @@ def main():
                 assert studio.instrument_panel.winfo_manager() == "pack"
                 studio.instrument_vars["Piano"].set(True)
                 assert "piano" in studio.musical_caption()
+                studio.instrument_mode.set("auto")
+                studio.update_instrument_mode()
+                assert "featured instruments:" not in studio.musical_caption()
+                studio.piano.start()
+                assert studio.piano.timer is not None
+                studio.piano.stop()
+                assert studio.piano.timer is None
                 studio.show_page("Inicio")
                 window.update_idletasks()
                 assert len(studio.song_data) == 1 and studio.home_cards.winfo_children()

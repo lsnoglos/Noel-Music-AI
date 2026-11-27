@@ -21,3 +21,5 @@ Interfaz creativa: reproductor fijo, tarjetas, exportación MP3, ayuda flotante,
 Centro de modelos: importación/exportación verificada, Qwen independiente con instalación por dispositivo, Turbo Q4, preferencias persistentes y copiar letra. Pendiente comprobar inferencia local Qwen y CPU/híbrido reales. No se recompila ACE-Step.
 
 Editor musical fase 1: adaptador multipart nativo, Cover sin FSQ, Repaint (PCM exterior opcional), referencia tímbrica y guardado independiente. Pendientes pruebas reales RTX 3070 y separación/síntesis vocal. No se cambia el motor fijado ni se descargan modelos.
+
+Espacio creativo: panel de generación fijo, instrumentos visibles, duración 60 s, piano de actividad, descarga completa, Qwen3 0.6B/1.7B, recomendación de hardware. Pendientes CI y benchmark real de nuevos Qwen y dimensiones/DPI del equipo. Motor ACE-Step sin cambios.

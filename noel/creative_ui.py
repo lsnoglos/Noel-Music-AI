@@ -78,3 +78,37 @@ def gradient(canvas, width, height, start, end, title, subtitle, play=False):
     canvas.create_text(12, height/2-12, anchor="w", text=title, fill="white", width=max(60,width-(72 if play else 24)),
                        font=("Segoe UI",14 if play else 20,"bold"))
     canvas.create_text(12, height-13, anchor="w", text=subtitle, fill="#fff1fb", font=("Segoe UI",10))
+
+
+class PianoLoader(tk.Canvas):
+    """Silent five-key activity animation. The sweep is not an inference percentage."""
+    def __init__(self,parent):
+        super().__init__(parent,width=116,height=35,highlightthickness=0,bg="#13172b")
+        self.timer=None
+        self.phase=0
+        self.white=[]
+        self.black=[]
+        for i in range(5):
+            x=2+23*i
+            self.white.append(self.create_rectangle(x,2,x+21,33,fill="#f1edf9",outline="#706489"))
+        for i in (0,1,3):
+            x=17+23*i
+            self.black.append((i+.7,self.create_rectangle(x,2,x+12,21,fill="#28223c",outline="#7762ab")))
+    def tick(self):
+        self.timer=None
+        position=self.phase if self.phase<=4 else 8-self.phase
+        for i,key in enumerate(self.white):
+            self.itemconfigure(key,fill="#f05ab6" if abs(i-position)<.6 else "#cbb9ee" if abs(i-position)<1.5 else "#f1edf9")
+        for i,key in self.black:
+            self.itemconfigure(key,fill="#8f408e" if abs(i-position)<.8 else "#28223c")
+        self.phase=(self.phase+.5)%8
+        self.timer=self.after(100,self.tick)
+    def start(self):
+        if self.timer is None:
+            self.phase=0
+            self.tick()
+    def stop(self):
+        if self.timer is not None:
+            self.after_cancel(self.timer)
+            self.timer=None
+        self.phase=0
