@@ -80,7 +80,13 @@ def install_runtime(root, mode, cancel, progress):
                         continue
                     target = stage/name
                     if target.exists():
-                        raise ValueError("Archivo duplicado en el motor de letras: "+name)
+                        # Archives can share identical notices; never replace a DLL or executable.
+                        if target.suffix.lower() in (".txt",".md"):
+                            continue
+                        with z.open(item) as src:
+                            if hashlib.file_digest(src,"sha256").hexdigest() != digest(target):
+                                raise ValueError("Biblioteca duplicada e incompatible: "+name)
+                        continue
                     with z.open(item) as src,target.open("xb") as dst:
                         shutil.copyfileobj(src,dst)
         if not (stage/"llama-server.exe").is_file():
@@ -164,7 +170,10 @@ def compose(root, model, mode, prompt, cancel, stage):
                     continue
                 if not ok:
                     raise data
-                text=data["choices"][0]["message"].get("content","").strip()
+                choice=data["choices"][0]
+                text=choice["message"].get("content","").strip()
+                if choice.get("finish_reason")=="length":
+                    raise ValueError("Qwen agotó su límite de texto; reduce la extensión solicitada.")
                 if not text or len(text)>16000:
                     raise ValueError("Qwen devolvió una letra vacía o demasiado extensa.")
                 return text

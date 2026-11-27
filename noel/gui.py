@@ -687,7 +687,7 @@ class Studio:
                 ok = self.check_model(name, size, digest)
                 path = model_path(self.models,key)
                 state = "✓ Instalado y verificado" if ok else "⚠ Requiere reparación" if path.exists() else "↓ Descarga pendiente" if path.with_suffix(".gguf.part").exists() else "○ No descargado"
-                inventory[key] = f"{state} · {size/1e6:.0f} MB · {'Necesario' if key in MODELS else 'Opcional'}"
+                inventory[key] = f"{state} · {size/1e6:.0f} MB · {'Requerido por modelo predeterminado' if key in required_music(self.music_default) else 'Opcional'}"
                 missing = missing or (key in required_music(self.music_default) and not ok)
                 rows.append(f"{name} · {state}")
             self.events.put(("inventory", ("\n".join(rows), inventory, missing)))
@@ -697,8 +697,12 @@ class Studio:
     def install(self, keys):
         if self.busy or not keys:
             return
+        mode = self.device_mode
+        text_runtime_needed = "qwen" in keys and not (text_engine.runtime_dir(RUNTIME,mode)/"llama-server.exe").is_file()
         total = sum(catalog()[k][1] for k in keys)
-        if not messagebox.askyesno("Modelos seleccionados", f"Verificar y descargar desde Hugging Face los archivos faltantes o dañados (hasta {total/1e9:.2f} GB)?"):
+        extra = sum(x[1] for x in text_engine.ASSETS[text_engine.kind(mode)]) if text_runtime_needed else 0
+        note = f" Incluye motor llama.cpp para {DEVICES[mode]} (hasta {extra/1e6:.0f} MB)." if text_runtime_needed else ""
+        if not messagebox.askyesno("Modelos seleccionados", f"Verificar y descargar archivos faltantes o dañados (hasta {(total+extra)/1e9:.2f} GB) desde Hugging Face y GitHub?"+note):
             return
         def work():
             self.verified.clear()
@@ -707,7 +711,10 @@ class Studio:
                     progress=lambda name, n, total: self.events.put(("progress", (f"{name} · {n/1e6:.1f} / {total/1e6:.1f} MB", n, total))))
             for key in keys:
                 name, size, _ = catalog()[key]
-                self.events.put(("model", (key, f"✓ Instalado y verificado · {size/1e6:.0f} MB · {'Necesario' if key in MODELS else 'Opcional'}")))
+                self.events.put(("model", (key, f"✓ Instalado y verificado · {size/1e6:.0f} MB · {'Requerido por modelo predeterminado' if key in required_music(self.music_default) else 'Opcional'}")))
+            if text_runtime_needed:
+                text_engine.install_runtime(RUNTIME,mode,self.cancel,
+                                            lambda n,b,t:self.events.put(("progress",(n,b,t))))
             return "Modelos verificados"
         self.run(work, "Instalación de modelos", download=True)
 
@@ -741,7 +748,7 @@ class Studio:
         args = [str(binary), "--device", device, "--host", "127.0.0.1", "--port", str(port),
                 "--models", str(self.models), "--max-batch", "1", "--vae-chunk",
                 "128" if not gpu or gpu["free_mib"] < 6000 else "256", "--vae-overlap", "32"]
-        self.events.put(("stage", "Iniciando motor CUDA"))
+        self.events.put(("stage", "Iniciando motor "+device))
         with (RUNTIME / "engine.log").open("w") as log:
             proc = subprocess.Popen(args, stdout=log, stderr=log, creationflags=subprocess.CREATE_NO_WINDOW)
             try:
@@ -783,7 +790,9 @@ class Studio:
         missing = [catalog()[key][0] for key in [*required_music(music),lyrics] if not model_path(self.models,key).is_file()]
         if missing:
             warning += "\nModelos pendientes de descargar o cargar: " + ", ".join(missing)
-        if warning.strip() and not messagebox.askyesno("Guardar configuración", warning+"\n\n¿Guardar de todos modos?"):
+        if lyrics == "qwen" and not (text_engine.runtime_dir(RUNTIME,device)/"llama-server.exe").is_file():
+            warning += "\nEl motor de letras Qwen para el procesador elegido todavía debe instalarse desde Modelos."
+        if warning.strip() and not messagebox.askyesno("Guardar configuración", warning.strip()+"\n\n¿Guardar de todos modos?"):
             return
         self.device_mode,self.music_default,self.lyrics_default = device,music,lyrics
         self.paths.update(device=device,music_model=music,lyrics_model=lyrics)
@@ -1089,6 +1098,9 @@ class Studio:
             return
         seconds = max(15, min(300, self.duration.get()))
         model = next(k for k,v in MUSIC.items() if v==self.model_choice.get())
+        if self.device_mode == "cpu" and seconds>30:
+            if not messagebox.askyesno("Generación por CPU", "Una canción larga por CPU puede tardar mucho. Recomendamos probar 15 segundos. ¿Continuar?"):
+                return
         if seconds > 120 or model != "dit" or self.device_mode == "cpu":
             if not messagebox.askyesno("Configuración experimental", "Esta duración o modelo aún no tiene benchmark en tu GPU. ¿Continuar?"):
                 return

@@ -53,3 +53,5 @@ Inicio muestra tarjetas con acciones por canción, reproductor fijo, exportació
 
 ## Centro de modelos y compositor Qwen
 Modelos separados por función. Cargar modelo importa un GGUF por tamaño y SHA-256 exactos; Guardar copia exporta sin mover el original. Qwen3 4B Instruct Q4_K_M (2.50 GB) se guarda en text-models para evitar el registro ACE-Step. Instala también el motor llama.cpp b12635 para CPU (~25 MB) o CUDA (~749 MB), mediante Modelos. Configuración permite CPU, GPU o CPU + GPU (ACE-Step en GPU y Qwen con 18 capas GPU). Los modelos se cargan bajo demanda, no simultáneamente. Turbo Q4 (1.45 GB) es una alternativa experimental de menor memoria; CPU puede ser lento. El perfil Q8 de 8 pasos sigue predeterminado. No hay benchmark de Qwen ni CPU real todavía.
+
+Al descargar Qwen por primera vez se ofrece instalar su motor para el dispositivo seleccionado en la misma autorización. Si después cambias de CPU a GPU, o importas únicamente el GGUF, puedes instalar el motor correspondiente por separado. No se descargan pesos sin permiso.
