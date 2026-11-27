@@ -26,7 +26,8 @@ from .presets import (VOICES, MOODS, AMBIENCES, STRUCTURES, LANGUAGES, INSTRUMEN
                       INTENTIONS, COMPLEXITIES, caption as build_caption, lyric_prompt)
 from .audio_export import export_audio
 from .creative_ui import ScrollFrame, tooltip, gradient, PianoLoader, instrument_icon
-from .hardware import recommend, recommendation_text
+from .hardware import recommend, operation_warning
+from .creative_ui import center_dialog, draw_play_state
 from .ui_theme import create_style
 from .studio import render, write_json
 from . import editor
@@ -47,6 +48,8 @@ class Studio:
         self.verified = {}
         self.new_version = None
         self.song_data = []
+        self.card_views = {}
+        self.card_playing = None
         self.model_buttons = {}
         self.model_save_buttons = {}
         self.composing = False
@@ -126,7 +129,7 @@ class Studio:
         self.generate_button.pack(fill="x", pady=(0, 5))
         instrument_row = ttk.Frame(workspace)
         instrument_row.pack(fill="x")
-        self.instrument_label = ttk.Label(instrument_row, text="Instrumentos", font=("Segoe UI",11,"bold"))
+        self.instrument_label = ttk.Label(instrument_row, text="Instrumentos",style="Field.TLabel",font=("Segoe UI",11,"bold"))
         self.instrument_label.pack(side="left")
         self.help(instrument_row, "Automático deja elegir al motor; Manual usa tus preferencias de instrumentos. La IA puede desviarse.")
         mode_row=ttk.Frame(workspace)
@@ -159,7 +162,7 @@ class Studio:
         durations=ttk.Frame(workspace)
         durations.pack(fill="x",pady=(0,5))
         ttk.Scale(durations,from_=15,to=300,variable=self.duration).pack(side="left",fill="x",expand=True)
-        self.duration_label=ttk.Label(durations,text="1:00",width=6)
+        self.duration_label=ttk.Label(durations,text="1:00",width=6,style="Field.TLabel")
         self.duration_label.pack(side="right")
         self.duration.trace_add("write",lambda *_:self.duration_label.configure(text=self.format_time(self.duration.get()*1000)))
         self.results_container = ttk.Frame(workspace)
@@ -183,8 +186,16 @@ class Studio:
         self.mood = self.combo(left, "Emoción", list(MOODS), "Carácter emocional de la interpretación.")
         self.setting = self.combo(right, "Ambiente", list(AMBIENCES), "Atmósfera y producción de la canción.")
         self.instrumental = tk.BooleanVar(value=False)
-        ttk.Checkbutton(form, text="Instrumental · solo pista, sin voz", variable=self.instrumental, command=self.toggle_instrumental).pack(anchor="w", pady=4)
-        self.language = self.combo(form, "Idioma de la canción", list(LANGUAGES), "Indica el idioma de las palabras cantadas. La IA puede desviarse.")
+        voice_row = ttk.Frame(form)
+        voice_row.pack(fill="x",pady=3)
+        voice_row.columnconfigure(0,weight=1,uniform="language")
+        voice_row.columnconfigure(1,weight=1,uniform="language")
+        instrumental_cell=ttk.Frame(voice_row)
+        instrumental_cell.grid(row=0,column=0,sticky="sw",padx=(0,4))
+        ttk.Checkbutton(instrumental_cell,text="Instrumental, sin voz",variable=self.instrumental,command=self.toggle_instrumental).pack(anchor="w")
+        language_cell=ttk.Frame(voice_row)
+        language_cell.grid(row=0,column=1,sticky="ew",padx=(4,0))
+        self.language = self.combo(language_cell, "Idioma", list(LANGUAGES), "Idioma de las palabras cantadas.")
         self.field_label(form, "Estilo musical", "Detalles adicionales: instrumentos, ritmo, timbre o producción. Puedes dejarlo vacío.")
         self.prompt = ttk.Entry(form)
         self.prompt.pack(fill="x")
@@ -192,15 +203,15 @@ class Studio:
         lyricbar.pack(fill="x", pady=(10, 4))
         ttk.Label(lyricbar, text="Letra", font=("Segoe UI", 10, "bold")).pack(side="left")
         self.help(lyricbar, "Escribe o pega la letra. Vacía = instrumental. Usa etiquetas [Verse], [Chorus].")
-        self.compose_cta = ttk.Button(lyricbar, text="✦ ¿Aún no tienes letra? Créala con IA", style="Accent.TButton", command=self.lyric_dialog)
+        self.compose_cta = ttk.Button(lyricbar, text="✦ Crear letra con IA", style="Accent.TButton", command=self.lyric_dialog)
         self.compose_cta.pack(side="right")
-        copy_button = ttk.Button(lyricbar, text="▣ Copiar", command=self.copy_lyrics)
+        self.copy_button = copy_button = ttk.Button(lyricbar, text="▣ Copiar", command=self.copy_lyrics, state="disabled")
         copy_button.pack(side="right", padx=4)
         tooltip(copy_button, "Copiar letra al portapapeles")
-        self.lyrics = tk.Text(form, height=7, wrap="word", font=("Segoe UI", 11), relief="flat")
+        self.lyrics = tk.Text(form, height=6, wrap="word", font=("Segoe UI", 11), relief="flat")
         self.lyrics.pack(fill="x")
-        self.model_choice = self.combo(form, "Modelo / calidad", list(MUSIC.values()), "Turbo Q8 conserva el perfil probado; Q4 y SFT son experimentales.")
-        self.model_choice.set(MUSIC[self.music_default])
+        self.lyrics.bind("<<Modified>>",self.lyrics_changed)
+        self.lyrics.edit_modified(False)
         ttk.Label(results, text="Tus generaciones", font=("Segoe UI", 16, "bold")).pack(anchor="w")
         self.latest = ttk.Label(results, text="Aquí aparecerá la canción generada.", wraplength=270)
         self.latest.pack(anchor="w", pady=8)
@@ -257,8 +268,12 @@ class Studio:
         ttk.Label(settings, text="Procesamiento y modelos predeterminados", font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(10,4))
         self.device_setting = self.combo(settings, "Procesador", list(DEVICES.values()), "CPU: procesamiento local lento. GPU: CUDA. CPU + GPU: ACE-Step usa GPU y Qwen reparte capas.")
         self.device_setting.set(DEVICES[self.device_mode])
-        self.hardware_label=ttk.Label(settings,text="Detectando recursos…",wraplength=650)
-        self.hardware_label.pack(anchor="w",pady=4)
+        hardware_box=ttk.Frame(settings,padding=8,style="Nav.TFrame")
+        hardware_box.pack(fill="x",pady=5)
+        self.hardware_label=ttk.Label(hardware_box,text="Detectando recursos…",wraplength=650,style="Nav.TLabel")
+        self.hardware_label.pack(anchor="w")
+        self.recommend_label=ttk.Label(settings,text="",wraplength=650,style="Field.TLabel")
+        self.recommend_label.pack(anchor="w",pady=3)
         ttk.Button(settings,text="Usar recomendación del equipo",command=self.recommend_settings).pack(anchor="w",pady=3)
         self.music_setting = self.combo(settings, "Modelo de música", list(MUSIC.values()), "Se carga al generar música, no al iniciar.")
         self.music_setting.set(MUSIC[self.music_default])
@@ -326,7 +341,7 @@ class Studio:
     def field_label(self, parent, text, explanation):
         row = ttk.Frame(parent)
         row.pack(fill="x", anchor="w", pady=(4, 0))
-        ttk.Label(row, text=text).pack(side="left")
+        ttk.Label(row, text=text,style="Field.TLabel").pack(side="left")
         self.help(row, explanation)
 
     def make_history(self, parent):
@@ -373,6 +388,7 @@ class Studio:
         except OSError as exc:
             messagebox.showerror("Reproducción", str(exc))
         self.playing_file = None
+        self.sync_card_playback(None)
         self.spectrum.delete("all")
         self.waveform.delete("all")
         self.position.set(0)
@@ -416,6 +432,15 @@ class Studio:
         bg, fg = ("#13172b", "#f6f3ff") if self.dark else ("#f7eff8", "#251c3a")
         self.style.configure("TFrame", background=bg)
         self.style.configure("TLabel", background=bg, foreground=fg)
+        self.style.configure("Field.TLabel",background=bg,foreground="#71dfe4" if self.dark else "#126b78",font=("Segoe UI",10,"bold"))
+        self.style.configure("TEntry",fieldbackground="#ffffff",foreground="#22243a",insertcolor="#22243a")
+        self.style.configure("TCombobox",fieldbackground="#ffffff",foreground="#22243a",background="#ffffff",arrowcolor="#25233d")
+        self.style.map("TCombobox",fieldbackground=[("disabled","#e8e8ef"),("readonly","#ffffff"),("!disabled","#ffffff")],foreground=[("disabled","#777785"),("readonly","#22243a")],selectbackground=[("readonly","#ffffff")],selectforeground=[("readonly","#22243a")])
+        self.style.map("TEntry",fieldbackground=[("disabled","#e8e8ef"),("!disabled","#ffffff")],foreground=[("disabled","#777785"),("!disabled","#22243a")])
+        self.w.option_add("*TCombobox*Listbox.background","#ffffff")
+        self.w.option_add("*TCombobox*Listbox.foreground","#22243a")
+        self.w.option_add("*TCombobox*Listbox.selectBackground","#e9d7f3")
+        self.w.option_add("*TCombobox*Listbox.selectForeground","#22243a")
         self.style.configure("Nav.TFrame", background="#25204b" if self.dark else "#e4d5f0")
         self.style.configure("Nav.TLabel", background="#25204b" if self.dark else "#e4d5f0", foreground=fg)
         self.style.configure("Nav.TButton", background="#392d66", foreground="#ffffff", padding=8)
@@ -431,12 +456,14 @@ class Studio:
         self.w.configure(background=bg)
         for widget in (getattr(self, "lyrics", None), getattr(self, "home_history", None), getattr(self, "create_history", None)):
             if widget is not None:
-                widget.configure(background=bg, foreground=fg, selectbackground="#7761be", selectforeground="white")
+                widget.configure(background="#ffffff", foreground="#22243a", selectbackground="#dbc5f1", selectforeground="#22243a")
         if hasattr(self, "lyrics"):
-            self.lyrics.configure(insertbackground=fg)
+            self.lyrics.configure(insertbackground="#22243a")
         if hasattr(self, "topic"):
-            self.topic.configure(background=bg, foreground=fg, insertbackground=fg)
-        for scroll in (getattr(self, "home_scroll", None), getattr(self, "form_scroll", None), getattr(self, "composer", None)):
+            self.topic.configure(background="#ffffff", foreground="#22243a", insertbackground="#22243a")
+        if hasattr(self,"edit_lyrics"):
+            self.edit_lyrics.configure(background="#ffffff",foreground="#22243a",insertbackground="#22243a")
+        for scroll in (getattr(self, "home_scroll", None), getattr(self, "form_scroll", None),getattr(self,"composer_scroll",None)):
             if scroll:
                 scroll.canvas.configure(background=bg)
         if hasattr(self, "song_data") and hasattr(self, "home_cards"):
@@ -449,7 +476,7 @@ class Studio:
 
     def combo(self, parent, label, values, explanation=""):
         self.field_label(parent, label, explanation)
-        field = ttk.Combobox(parent, values=values, state="readonly")
+        field = ttk.Combobox(parent, values=values, state="readonly",width=8)
         field.current(0)
         field.pack(fill="x", anchor="w")
         return field
@@ -496,7 +523,7 @@ class Studio:
                 self.stage = text
             elif kind == "hardware":
                 self.hardware = text
-                self.hardware_label.configure(text=recommendation_text(text,recommend(text)))
+                self.update_hardware_summary(text)
             elif kind == "inventory":
                 report, inventory, missing = text
                 self.observed.configure(text=report)
@@ -527,6 +554,7 @@ class Studio:
             elif kind == "lyrics":
                 self.lyrics.delete("1.0", "end")
                 self.lyrics.insert("1.0", text)
+                self.update_copy_button()
                 self.lyric_notice.configure(text="Letra creada. Revísala y edítala antes de generar música.")
                 self.hide_composer()
             elif kind == "edited":
@@ -574,11 +602,15 @@ class Studio:
                     self.position.set(position)
                 self.clock.configure(text=f"{self.format_time(position)} / {self.format_time(duration)}")
                 self.spectrum.delete("all")
-                if self.playing_file and self.player.send("status noelplayer mode") == "playing":
+                playing=self.player.send("status noelplayer mode")=="playing" and position<duration
+                self.sync_card_playback(self.playing_file if playing else None)
+                if self.playing_file and playing:
                     for i, level in enumerate(spectrum(self.playing_file, position)):
                         self.spectrum.create_rectangle(i*10+1, 30-28*level, i*10+8, 30, fill="#36d1cf", outline="")
             except (OSError, ValueError):
                 pass
+        else:
+            self.sync_card_playback(None)
         if self.closing and not self.busy:
             self.w.destroy()
             return
@@ -885,7 +917,7 @@ class Studio:
         self.edit_consent=tk.BooleanVar(value=False)
         self.edit_consent_widget=ttk.Checkbutton(form,text="Tengo autorización para editar el audio y utilizar las voces de referencia.",variable=self.edit_consent)
         self.edit_consent_widget.pack(anchor="w",pady=6)
-        self.edit_button=ttk.Button(form,text="✦ Generar versión editada",style="Accent.TButton",command=self.run_editor)
+        self.edit_button=ttk.Button(form,text="✦ Generar versión editada",style="Accent.TButton",command=lambda:self.refresh_then(self.run_editor))
         self.edit_button.pack(fill="x",pady=5)
         self.edit_status=ttk.Label(form,text="Pista instrumental idéntica + letra nueva: módulo de separación y síntesis vocal pendiente.",wraplength=650)
         self.edit_status.pack(anchor="w",pady=6)
@@ -981,6 +1013,8 @@ class Studio:
         except ValueError:
             messagebox.showerror("Editor musical","Revisa los tiempos.")
             return
+        if not self.preflight("editor",model):
+            return
         fidelity=self.edit_fidelity.get()
         preserve=self.exact_pcm.get()
         self.edit_status.configure(text="Preparando edición experimental…")
@@ -993,9 +1027,20 @@ class Studio:
                 return "Versión editada guardada."
         self.run(work,"Edición musical")
 
+    def update_copy_button(self):
+        enabled=bool(self.lyrics.get("1.0","end").strip()) and not self.instrumental.get()
+        self.copy_button.configure(state="normal" if enabled else "disabled")
+
+    def lyrics_changed(self,_=None):
+        self.lyrics.edit_modified(False)
+        self.update_copy_button()
+
     def copy_lyrics(self):
+        lyrics=self.lyrics.get("1.0","end").strip()
+        if not lyrics or self.instrumental.get():
+            return
         self.w.clipboard_clear()
-        self.w.clipboard_append(self.lyrics.get("1.0","end").strip())
+        self.w.clipboard_append(lyrics)
         self.status.set("Letra copiada al portapapeles.")
 
     def download_all(self):
@@ -1035,6 +1080,13 @@ class Studio:
         self.music_setting.set(MUSIC[rec["music"]])
         self.lyrics_setting.set(LYRIC_MODELS[rec["lyrics"]])
 
+    def update_hardware_summary(self,info):
+        gpu=info.get("gpu") or {}
+        ram=(info.get("ram_available") or 0)/2**30
+        self.hardware_label.configure(text=f"{gpu.get('name','CPU · sin NVIDIA detectada')}  |  RAM libre: {ram:.1f} GiB  |  Hilos: {info.get('cpu_threads') or '—'}")
+        rec=recommend(info)
+        self.recommend_label.configure(text="Sugeridos: "+MUSIC[rec["music"]]+" / "+LYRIC_MODELS[rec["lyrics"]])
+
     def recommend_settings(self):
         if self.busy:
             return
@@ -1056,62 +1108,43 @@ class Studio:
             return "Recursos actualizados"
         self.run(work,"Detectando recursos")
 
-    def preflight(self, purpose, selected):
+    def preflight(self,purpose,selected):
         if self.hardware is None:
-            messagebox.showinfo("Recursos","Primero completa el diagnóstico del equipo.")
+            self.status.set("Completa el diagnóstico antes de continuar.")
             self.inspect()
             return False
-        rec=recommend(self.hardware)
-        key="music" if purpose=="music" else "lyrics"
-        gpu=self.hardware.get("gpu") or {}
-        mismatch=self.device_mode!=rec["device"] or selected!=rec[key]
-        caution=not gpu or self.device_mode=="cpu" or (gpu.get("free_mib") or 0)<5500
-        signature=(purpose,self.device_mode,selected,rec["device"],rec[key])
-        if (not mismatch and not caution) or signature in self.advice_seen:
+        warning=operation_warning(self.hardware,self.device_mode,purpose,selected)
+        if not warning:
+            return True
+        signature=(purpose,self.device_mode,selected,warning)
+        if signature in self.advice_seen:
             return True
         dialog=tk.Toplevel(self.w)
-        dialog.title("Configuración recomendada")
+        dialog.withdraw()
+        dialog.title("Recursos del equipo")
         dialog.transient(self.w)
-        dialog.grab_set()
         frame=ttk.Frame(dialog,padding=16)
         frame.pack(fill="both",expand=True)
-        ttk.Label(frame,text="Adapta Noel Music AI a tu equipo",font=("Segoe UI",15,"bold")).pack(anchor="w",pady=(0,8))
-        ttk.Label(frame,text=recommendation_text(self.hardware,rec),wraplength=480,justify="left").pack(anchor="w")
-        choice=tk.StringVar(value="cancel")
+        ttk.Label(frame,text={"lyrics":"Generación de letras","music":"Generación musical","editor":"Edición musical"}[purpose],
+                  style="Field.TLabel",font=("Segoe UI",15,"bold")).pack(anchor="w",pady=(0,8))
+        ttk.Label(frame,text=warning,wraplength=420,justify="left").pack(anchor="w")
+        answer=tk.StringVar(value="cancel")
         def choose(value):
-            choice.set(value)
+            answer.set(value)
             dialog.destroy()
-        ttk.Button(frame,text="Aceptar recomendación",style="Accent.TButton",command=lambda:choose("accept")).pack(fill="x",pady=(12,4))
-        ttk.Button(frame,text="Elegir yo · Configuración",command=lambda:choose("settings")).pack(fill="x",pady=3)
-        if self.device_mode=="cpu" or gpu:
-            ttk.Button(frame,text="Continuar con mi selección",command=lambda:choose("keep")).pack(fill="x",pady=3)
+        ttk.Button(frame,text="Continuar",style="Accent.TButton",command=lambda:choose("keep")).pack(fill="x",pady=(12,3))
+        ttk.Button(frame,text="Ajustar modelos",command=lambda:choose("settings")).pack(fill="x",pady=3)
         dialog.protocol("WM_DELETE_WINDOW",lambda:choose("cancel"))
+        center_dialog(dialog,self.w)
+        dialog.grab_set()
         self.w.wait_window(dialog)
-        answer=choice.get()
-        if answer=="settings":
+        if answer.get()=="settings":
             self.show_page("Configuración")
             return False
-        if answer=="keep":
+        if answer.get()=="keep":
             self.advice_seen.add(signature)
             return True
-        if answer!="accept":
-            return False
-        self.device_mode,self.music_default,self.lyrics_default=rec["device"],rec["music"],rec["lyrics"]
-        self.paths.update(device=self.device_mode,music_model=self.music_default,lyrics_model=self.lyrics_default)
-        write_json(self.config,self.paths)
-        self.apply_recommendation(rec)
-        self.model_choice.set(MUSIC[self.music_default])
-        self.lyric_model_choice.set(LYRIC_MODELS[self.lyrics_default])
-        self.edit_model.set(MUSIC[self.music_default])
-        self.advice_seen.add((purpose,self.device_mode,rec[key],rec["device"],rec[key]))
-        needed=required_music(self.music_default) if purpose=="music" else [self.lyrics_default]
-        if purpose=="lyrics" and self.lyrics_default=="lm":
-            needed=[*required_music(self.music_default),"lm"]
-        if any(not model_path(self.models,k).is_file() for k in needed) or (purpose=="lyrics" and self.lyrics_default in TEXT_BASES and not (text_engine.runtime_dir(RUNTIME,self.device_mode)/"llama-server.exe").is_file()):
-            self.show_page("Modelos")
-            self.status.set("Instala los modelos recomendados y vuelve a generar.")
-            return False
-        return True
+        return False
 
     def save_preferences(self):
         if self.busy:
@@ -1131,9 +1164,7 @@ class Studio:
         self.device_mode,self.music_default,self.lyrics_default = device,music,lyrics
         self.paths.update(device=device,music_model=music,lyrics_model=lyrics)
         write_json(self.config,self.paths)
-        self.model_choice.set(MUSIC[music])
         self.edit_model.set(MUSIC[music])
-        self.lyric_model_choice.set(LYRIC_MODELS[lyrics])
         self.status.set("Preferencias guardadas. Los modelos se cargan cuando se necesitan.")
         self.inspect()
 
@@ -1221,49 +1252,64 @@ class Studio:
         self.language.configure(state="disabled" if state else "readonly")
         self.lyrics.configure(state="disabled" if state else "normal")
         self.compose_cta.configure(state="disabled" if state else "normal")
+        self.update_copy_button()
         if state:
             self.hide_composer()
 
     def build_composer(self, parent):
-        self.composer = ScrollFrame(parent)
-        frame = self.composer.inner
-        header = ttk.Frame(frame)
-        header.pack(fill="x", pady=(0, 6))
-        ttk.Label(header, text="✦ Compositor de letras IA", font=("Segoe UI", 16, "bold")).pack(side="left")
-        ttk.Button(header, text="×", width=3, command=self.hide_composer).pack(side="right")
-        self.field_label(frame, "Tema de tu canción", "Describe lo que quieres contar.")
-        self.topic = tk.Text(frame, height=4, wrap="word", relief="flat")
+        self.composer=ttk.Frame(parent,padding=(0,2))
+        header=ttk.Frame(self.composer)
+        header.pack(side="top",fill="x")
+        footer=ttk.Frame(self.composer)
+        footer.pack(side="bottom",fill="x")
+        self.composer_scroll=ScrollFrame(self.composer,auto_hide=True)
+        self.composer_scroll.pack(fill="both",expand=True)
+        frame=self.composer_scroll.inner
+        ttk.Label(header,text="✦ Compositor IA",style="Field.TLabel",font=("Segoe UI",13,"bold")).pack(side="left")
+        ttk.Button(header,text="×",width=2,command=self.hide_composer).pack(side="right")
+        self.field_label(frame,"Tema de la canción","Describe lo que quieres contar.")
+        self.topic=tk.Text(frame,height=2,width=12,wrap="word",relief="flat",font=("Segoe UI",10),background="white",foreground="#22243a")
         self.topic.pack(fill="x")
-        self.structure = self.combo(frame, "Estructura", [*STRUCTURES, "Personalizada"], "Selecciona una estructura o define el orden de seis secciones.")
-        self.sections_panel = ttk.Frame(frame)
-        self.sections = []
-        for i, val in enumerate(["Intro","Verso 1","Coro","Verso 2","Coro","Outro"]):
-            slot = ttk.Frame(self.sections_panel)
-            slot.grid(row=i//2, column=i%2, sticky="ew", padx=3, pady=3)
-            ttk.Label(slot, text=str(i+1)).pack(anchor="w")
-            combo = ttk.Combobox(slot, values=list(SECTIONS), state="readonly", width=12)
+        row=ttk.Frame(frame)
+        row.pack(fill="x")
+        row.columnconfigure(0,weight=1,uniform="composer")
+        row.columnconfigure(1,weight=1,uniform="composer")
+        left,right=ttk.Frame(row),ttk.Frame(row)
+        left.grid(row=0,column=0,sticky="ew",padx=(0,3))
+        right.grid(row=0,column=1,sticky="ew",padx=(3,0))
+        self.structure=self.combo(left,"Estructura",[*STRUCTURES,"Personalizada"],"Selecciona una estructura o personaliza seis secciones.")
+        self.intent=self.combo(right,"Intención",list(INTENTIONS),"Propósito de la letra: amor, protesta, patriotismo, etc.")
+        self.sections_panel=ttk.Frame(frame)
+        self.sections=[]
+        for i,val in enumerate(["Intro","Verso 1","Coro","Verso 2","Coro","Outro"]):
+            combo=ttk.Combobox(self.sections_panel,values=list(SECTIONS),state="readonly",width=6)
             combo.set(val)
-            combo.pack(fill="x")
+            combo.grid(row=i//3,column=i%3,sticky="ew",padx=2,pady=1)
             self.sections.append(combo)
-        self.sections_panel.columnconfigure(0, weight=1)
-        self.sections_panel.columnconfigure(1, weight=1)
-        self.structure.bind("<<ComboboxSelected>>", self.toggle_sections)
-        self.intent = self.combo(frame, "Intención de la letra", list(INTENTIONS), "Tema o propósito: protesta, amor, patriotismo, desahogo, etc.")
-        self.complexity = self.combo(frame, "Estilo de escritura", list(COMPLEXITIES), "El nivel de elaboración: poético, sencillo y pegadizo o narrativo.")
-        self.lyric_language = self.combo(frame, "Idioma", list(LANGUAGES), "Idioma solicitado para la letra; se aplica también al canto.")
-        self.field_label(frame, "Instrucción adicional", "Indicaciones que no estén cubiertas por los demás controles.")
-        self.extra = ttk.Entry(frame)
+        for i in range(3):
+            self.sections_panel.columnconfigure(i,weight=1)
+        self.structure_row=row
+        self.structure.bind("<<ComboboxSelected>>",self.toggle_sections)
+        row2=ttk.Frame(frame)
+        row2.pack(fill="x")
+        row2.columnconfigure(0,weight=1,uniform="composer")
+        row2.columnconfigure(1,weight=1,uniform="composer")
+        left,right=ttk.Frame(row2),ttk.Frame(row2)
+        left.grid(row=0,column=0,sticky="ew",padx=(0,3))
+        right.grid(row=0,column=1,sticky="ew",padx=(3,0))
+        self.complexity=self.combo(left,"Estilo de escritura",list(COMPLEXITIES),"Poético, sencillo, narrativo, etc.")
+        self.lyric_language=self.combo(right,"Idioma",list(LANGUAGES),"Idioma de la letra y el canto.")
+        self.field_label(frame,"Instrucción adicional","Indicaciones complementarias.")
+        self.extra=ttk.Entry(frame)
         self.extra.pack(fill="x")
-        self.lyric_model_choice = self.combo(frame, "Modelo de letras", list(LYRIC_MODELS.values()), "Qwen3 sigue instrucciones textuales; ACE-Step es un compositor musical rápido.")
-        self.lyric_model_choice.set(LYRIC_MODELS[self.lyrics_default])
-        self.lyric_notice = ttk.Label(frame, text="Selecciona el modelo de letras. Descárgalo desde Modelos.", wraplength=280)
-        self.lyric_notice.pack(anchor="w", pady=6)
-        self.compose_button = ttk.Button(frame, text="✦ Generar letra", style="Accent.TButton", command=lambda:self.refresh_then(self.compose_lyrics))
-        self.compose_button.pack(fill="x", pady=8)
+        self.compose_button=ttk.Button(footer,text="✦ Generar letra",style="Accent.TButton",command=lambda:self.refresh_then(self.compose_lyrics))
+        self.compose_button.pack(fill="x",pady=(3,1))
+        self.lyric_notice=ttk.Label(footer,text="",wraplength=280)
+        self.lyric_notice.pack(anchor="w")
 
     def toggle_sections(self, _=None):
         if self.structure.get() == "Personalizada":
-            self.sections_panel.pack(fill="x", after=self.structure)
+            self.sections_panel.pack(fill="x", after=self.structure_row)
         else:
             self.sections_panel.pack_forget()
 
@@ -1271,9 +1317,9 @@ class Studio:
         if self.instrumental.get() or self.busy:
             return
         self.lyric_language.set(self.language.get())
-        self.lyric_model_choice.set(LYRIC_MODELS[self.lyrics_default])
         self.results.pack_forget()
         self.composer.pack(fill="both", expand=True)
+        self.composer_scroll.canvas.yview_moveto(0)
         self.composing = True
 
     def hide_composer(self):
@@ -1297,11 +1343,9 @@ class Studio:
             return
         if self.lyrics.get("1.0", "end").strip() and not messagebox.askyesno("Compositor", "¿Reemplazar la letra actual si se genera correctamente?"):
             return
-        selected = next(k for k,v in LYRIC_MODELS.items() if v==self.lyric_model_choice.get())
+        selected = self.lyrics_default
         if not self.preflight("lyrics", selected):
             return
-        selected = next(k for k,v in LYRIC_MODELS.items() if v==self.lyric_model_choice.get())
-        self.lyric_notice.configure(text="Generando letra en " + language + "…")
         self.language.set(language)
         mode = self.device_mode
         if selected in TEXT_BASES:
@@ -1329,6 +1373,7 @@ class Studio:
                                              lm_model=OPTIONAL["lm"][0], lm_mode="inspire", lm_batch_size=1))
                 self.events.put(("lyrics", lyrics))
                 return "Letra generada. Revísala antes de crear música."
+        self.lyric_notice.configure(text="Generando letra en " + language + "…")
         self.run(work, "Composición")
 
     def select_song(self, index):
@@ -1351,35 +1396,73 @@ class Studio:
     def draw_cards(self):
         for widget in self.home_cards.winfo_children():
             widget.destroy()
-        data = [(i, s) for i,s in enumerate(self.song_data) if not self.home_filter.get() or s["favorite"]]
+        self.card_views={}
+        data=[(i,s) for i,s in enumerate(self.song_data) if not self.home_filter.get() or s["favorite"]]
         if not data:
-            ttk.Label(self.home_cards, text="Todavía no hay canciones en esta vista.").pack(anchor="w")
+            ttk.Label(self.home_cards,text="Todavía no hay canciones en esta vista.").pack(anchor="w")
             return
-        palettes = [("#c80979","#5335af"),("#1551b8","#00a0aa"),("#e85324","#b71d6e"),("#5138ae","#087d97")]
-        for pos, (i, song) in enumerate(data):
-            card = ttk.Frame(self.home_cards, padding=7)
-            card.grid(row=pos//self.card_columns, column=pos%self.card_columns, sticky="nsew", padx=4, pady=4)
-            top = tk.Canvas(card, height=106, highlightthickness=0, cursor="hand2")
+        palettes=[("#c80979","#5335af"),("#1551b8","#00a0aa"),("#e85324","#b71d6e"),("#5138ae","#087d97")]
+        for pos,(i,song) in enumerate(data):
+            card=ttk.Frame(self.home_cards,padding=7)
+            card.grid(row=pos//self.card_columns,column=pos%self.card_columns,sticky="nsew",padx=4,pady=4)
+            top=tk.Canvas(card,height=106,highlightthickness=0,cursor="hand2")
             top.pack(fill="x")
-            left,right = palettes[i%len(palettes)]
-            title = song["title"]
-            sub = self.format_time(song["seconds"]*1000)
-            top.bind("<Configure>", lambda e, w=top, a=left,b=right,t=title,s=sub: gradient(w,e.width,e.height,a,b,t,s,play=True))
-            top.bind("<Button-1>", lambda _, n=i: self.card_action(n,self.play))
-            row = ttk.Frame(card)
-            row.pack(fill="x", pady=4)
-            for text, fn in [("▶",self.play),("⏸",self.pause_selected),("■",self.stop_selected),("↓ MP3",lambda: self.export("mp3")),
-                             ("↓ WAV",self.export),("Letra",self.view_lyrics)]:
-                ttk.Button(row,text=text,command=lambda n=i,f=fn:self.card_action(n,f)).pack(side="left",padx=1)
-            row2 = ttk.Frame(card)
-            row2.pack(fill="x")
-            ttk.Button(row2,text="♥",style="FavoriteHeart.TButton" if song["favorite"] else "MutedHeart.TButton",
-                       command=lambda n=i:self.card_action(n,lambda:self.edit_song(True))).pack(side="left")
-            for text, fn in [("Renombrar",lambda:self.edit_song(False)),("Ubicación",self.open_folder),
-                             ("Compartir",self.share_song)]:
-                ttk.Button(row2,text=text,command=lambda n=i,f=fn:self.card_action(n,f)).pack(side="left",padx=1)
+            left,right=palettes[i%len(palettes)]
+            title=song["title"]
+            sub=self.format_time(song["seconds"]*1000)
+            path=self.files[i]
+            self.card_views[path]=(top,left)
+            def paint(e,w=top,a=left,b=right,t=title,s=sub,p=path):
+                gradient(w,e.width,e.height,a,b,t,s,play=True)
+                draw_play_state(w,a,self.card_playing==p)
+            top.bind("<Configure>",paint)
+            top.bind("<Button-1>",lambda _,n=i:self.toggle_card(n))
+            row=ttk.Frame(card)
+            row.pack(fill="x",pady=4)
+            ttk.Button(row,text="♥",style="FavoriteHeart.TButton" if song["favorite"] else "MutedHeart.TButton",
+                       command=lambda n=i:self.card_action(n,lambda:self.edit_song(True))).pack(side="left",padx=1)
+            for label,fn in [("↓ MP3",lambda:self.export("mp3")),("↓ WAV",self.export),("Letra",self.view_lyrics)]:
+                ttk.Button(row,text=label,command=lambda n=i,f=fn:self.card_action(n,f)).pack(side="left",padx=1)
+            more=ttk.Button(row,text="⋯",width=3)
+            more.pack(side="right",padx=1)
+            more.configure(command=lambda n=i,w=more:self.card_menu(n,w))
         for col in range(3):
-            self.home_cards.columnconfigure(col, weight=1 if col < self.card_columns else 0)
+            self.home_cards.columnconfigure(col,weight=1 if col<self.card_columns else 0)
+
+    def card_menu(self,index,anchor):
+        menu=tk.Menu(anchor,tearoff=False,background="white",foreground="#22243a")
+        for label,fn in [("Renombrar",lambda:self.edit_song(False)),("Ubicación",self.open_folder),("Compartir",self.share_song)]:
+            menu.add_command(label=label,command=lambda f=fn:self.card_action(index,f))
+        try:
+            menu.tk_popup(anchor.winfo_rootx(),anchor.winfo_rooty()+anchor.winfo_height())
+        finally:
+            menu.grab_release()
+
+    def sync_card_playback(self,path):
+        if path==self.card_playing:
+            return
+        self.card_playing=path
+        for file,(canvas,color) in self.card_views.items():
+            draw_play_state(canvas,color,file==path)
+
+    def toggle_card(self,index):
+        path=self.files[index]
+        if self.player.opened and self.playing_file==path:
+            try:
+                mode=self.player.send("status noelplayer mode")
+                if mode=="playing":
+                    self.player.send("pause noelplayer")
+                    self.sync_card_playback(None)
+                    return
+                if mode=="paused":
+                    self.player.send("resume noelplayer")
+                    self.sync_card_playback(path)
+                    return
+            except OSError:
+                pass
+        self.card_action(index,self.play)
+        if self.playing_file==path and self.player.opened:
+            self.sync_card_playback(path)
 
     def update_heart(self):
         if not hasattr(self, "favorite_button"):
@@ -1440,14 +1523,10 @@ class Studio:
             messagebox.showinfo("Letra", "Escribe una letra o usa el compositor IA para generar una canción con voz.")
             return
         seconds = max(15, min(300, self.duration.get()))
-        model = next(k for k,v in MUSIC.items() if v==self.model_choice.get())
+        model = self.music_default
         if not self.preflight("music",model):
             return
-        model = next(k for k,v in MUSIC.items() if v==self.model_choice.get())
-        if self.device_mode == "cpu" and seconds>30:
-            if not messagebox.askyesno("Generación por CPU", "Una canción larga por CPU puede tardar mucho. Recomendamos probar 15 segundos. ¿Continuar?"):
-                return
-        elif seconds > 120 or model == "sft":
+        if seconds > 120 or model == "sft":
             if not messagebox.askyesno("Configuración experimental", "Esta duración o modelo aún no tiene benchmark suficiente en tu equipo. ¿Continuar?"):
                 return
         seed = secrets.randbelow(2**31)

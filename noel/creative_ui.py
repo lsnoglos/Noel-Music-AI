@@ -4,18 +4,29 @@ from tkinter import ttk
 
 
 class ScrollFrame(ttk.Frame):
-    def __init__(self, parent):
+    def __init__(self, parent, auto_hide=False):
         super().__init__(parent)
+        self.auto_hide=auto_hide
         self.canvas = tk.Canvas(self, highlightthickness=0, bg="#13172b")
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
+        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.scroll_position)
+        if not auto_hide:
+            self.scrollbar.pack(side="right", fill="y")
         self.canvas.pack(side="left", fill="both", expand=True)
         self.inner = ttk.Frame(self.canvas, padding=3)
         self.item = self.canvas.create_window((0,0), window=self.inner, anchor="nw")
         self.inner.bind("<Configure>", lambda _: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self.item, width=e.width))
         self.winfo_toplevel().bind("<MouseWheel>", self.wheel, add="+")
+
+    def scroll_position(self,first,last):
+        self.scrollbar.set(first,last)
+        if self.auto_hide:
+            needed=float(last)-float(first)<.999
+            if needed and not self.scrollbar.winfo_manager():
+                self.scrollbar.pack(side="right",fill="y",before=self.canvas)
+            elif not needed and self.scrollbar.winfo_manager():
+                self.scrollbar.pack_forget()
 
     def wheel(self, event):
         widget = event.widget
@@ -152,3 +163,27 @@ def instrument_icon(name, master):
         for x in (18,23,28):
             d.ellipse((x,7,x+3,10),fill=white)
     return ImageTk.PhotoImage(im.resize((15,15),Image.Resampling.LANCZOS),master=master)
+
+
+def center_dialog(dialog,parent):
+    dialog.update_idletasks()
+    width,height=dialog.winfo_reqwidth(),dialog.winfo_reqheight()
+    x=parent.winfo_rootx()+(parent.winfo_width()-width)//2
+    y=parent.winfo_rooty()+(parent.winfo_height()-height)//2
+    x=max(0,min(x,parent.winfo_screenwidth()-width))
+    y=max(0,min(y,parent.winfo_screenheight()-height))
+    dialog.geometry(f"+{x}+{y}")
+    dialog.deiconify()
+
+
+def draw_play_state(canvas,color,playing):
+    canvas.delete("play_state")
+    w,h=canvas.winfo_width(),canvas.winfo_height()
+    if w<60 or h<40:
+        return
+    canvas.create_oval(w-55,h/2-19,w-17,h/2+19,fill="white",outline="",tags="play_state")
+    if playing:
+        for x in (w-43,w-34):
+            canvas.create_rectangle(x,h/2-8,x+5,h/2+8,fill=color,outline="",tags="play_state")
+    else:
+        canvas.create_polygon(w-41,h/2-9,w-41,h/2+9,w-26,h/2,fill=color,outline="",tags="play_state")
