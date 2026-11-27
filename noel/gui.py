@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 import tempfile
+import wave
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -960,7 +961,7 @@ class Studio:
         self.field_label(a,"Nombre del perfil","Nombre que se usará en Crear música y Editor musical.")
         self.voice_name=ttk.Entry(a)
         self.voice_name.pack(fill="x")
-        self.voice_kind=self.combo(b,"Tipo de muestra",["Hablada","Cantada"],"Una grabación limpia mejora la referencia.")
+        self.voice_kind=self.combo(b,"Tipo de muestra",["Hablada","Cantada"],"Una grabación limpia mejora la referencia. Lee un texto natural o canta una frase durante 15–30 segundos.")
         self.voice_consent=tk.BooleanVar(value=False)
         ttk.Checkbutton(form,text="Es mi voz o tengo autorización.",variable=self.voice_consent).pack(anchor="w",pady=3)
         row=ttk.Frame(form)
@@ -999,7 +1000,7 @@ class Studio:
         # Hidden optional advanced setting, kept for accurate reference transcription.
         advanced=ttk.Frame(form)
         self.voice_transcript=ttk.Entry(advanced)
-        ttk.Label(advanced,text="Palabras exactas de la muestra (opcional)").pack(anchor="w")
+        ttk.Label(advanced,text="Palabras que realmente pronunciaste. Ayuda a imitar la prosodia; si no las recuerdas, déjalo vacío.",wraplength=300).pack(anchor="w")
         self.voice_transcript.pack(fill="x")
         ttk.Button(form,text="ⓘ Transcripción opcional",command=lambda:advanced.pack(fill="x",before=self.voice_test_title) if not advanced.winfo_manager() else advanced.pack_forget()).pack(anchor="w")
         self.voice_test_title=ttk.Label(form,text="2 · Prueba la voz",style="Field.TLabel",font=("Segoe UI",14,"bold"))
@@ -1007,8 +1008,9 @@ class Studio:
         self.voice_target=ttk.Label(form,text="Nueva voz · sin guardar",wraplength=330)
         self.voice_target.pack(anchor="w")
         self.voice_test_language=self.combo(form,"Idioma",list(LANGUAGES),"Idioma de la frase nueva.")
-        self.voice_test_text=tk.Text(form,height=3,width=15,wrap="word",background="white",foreground="#22243a")
+        self.voice_test_text=tk.Text(form,height=3,width=15,wrap="word",background="white",foreground="#22243a",insertbackground="#22243a")
         self.voice_test_text.pack(fill="x",pady=4)
+        ttk.Label(form,text="Escribe una frase nueva; no es necesario repetir la muestra.",wraplength=300).pack(anchor="w")
         self.voice_speak_button=ttk.Button(form,text="✦ Generar frase",style="Accent.TButton",command=self.speak_profile)
         self.voice_speak_button.pack(fill="x",pady=3)
         self.speech_status=ttk.Label(form,text="Prueba la voz antes de guardarla.",wraplength=330)
@@ -1062,6 +1064,7 @@ class Studio:
         self.sample_cursor.set(0)
         self.sample_scale.configure(to=1)
         self.sample_time.configure(text="0:00 / 0:00")
+        self.sample_play.configure(text="▶")
         self.draw_sample_wave()
         self.voice_name.delete(0,"end")
         self.voice_transcript.delete(0,"end")
@@ -1080,7 +1083,8 @@ class Studio:
         self.sample_peaks=envelope(path,100)
         self.sample_start=0
         self.sample_cursor.set(0)
-        self.sample_scale.configure(to=self.sample_duration)
+        self.sample_scale.configure(to=max(1,self.sample_duration))
+        self.sample_time.configure(text=f"0:00 / {self.format_time(self.sample_duration*1000)}")
         self.extract_sample.set(extract)
         if extract:
             self.voice_kind.set("Cantada")
@@ -1136,11 +1140,17 @@ class Studio:
                     self.player.send("pause noelplayer")
                     self.sample_play.configure(text="▶")
                     return
+                if self.sample_cursor.get()>=self.sample_duration-.05:
+                    self.player.seek(0)
                 self.player.send("play noelplayer")
             else:
+                position=self.sample_cursor.get()
+                if position>=self.sample_duration-.05:
+                    position=0
                 self.play_editor_file(self.voice_sample)
-                self.seek(int(self.sample_cursor.get()*1000))
-            self.sample_play.configure(text="Ⅱ")
+                if self.player.opened:
+                    self.seek(int(position*1000))
+            self.sample_play.configure(text="Ⅱ" if self.player.opened and self.playing_file==self.voice_sample else "▶")
         except OSError as exc:
             messagebox.showerror("Reproducción",str(exc))
 
@@ -1219,6 +1229,7 @@ class Studio:
         transcript=self.voice_transcript.get().strip()
         signature=(source,start,extract,kind,transcript)
         if not profile and signature!=self.draft_signature:
+            self.stop_player()
             self.reset_draft()
         if not profile and self.draft_temp is None:
             self.draft_temp=tempfile.TemporaryDirectory(prefix="noel-draft-")
@@ -1318,6 +1329,16 @@ class Studio:
         self.reset_draft()
         self.discard_recording()
         self.voice_sample=None
+        self.sample_duration=0
+        self.sample_start=0
+        self.sample_peaks=[]
+        self.sample_cursor.set(0)
+        self.sample_scale.configure(to=1)
+        self.sample_time.configure(text="0:00 / 0:00")
+        self.sample_play.configure(text="▶")
+        self.draw_sample_wave()
+        self.extract_sample.set(False)
+        self.voice_selection_changed()
         self.voice_transcript.delete(0,"end")
         self.voice_temp=tempfile.TemporaryDirectory(prefix="noel-voice-")
         try:

@@ -107,10 +107,18 @@ def main():
                 import array
                 sample=Path(tmp)/"ref.wav"
                 save_pcm(sample,array.array("h",[1200,-1200]*44100*3))
+                studio.set_voice_sample(sample,"Muestra")
+                assert studio.sample_duration>=5
+                studio.sample_seek(2)
+                studio.choose_sample_start()
+                assert studio.sample_start>=0
                 create_profile(studio.voice_root,sample,"Mi voz",True)
                 studio.refresh_voices()
                 assert "Perfil · Mi voz" in studio.voice["values"]
                 assert "Perfil · Mi voz" in studio.edit_target_voice["values"]
+                studio.voice_list.selection_set(0)
+                studio.voice_selection_changed()
+                assert "Mi voz" in studio.voice_target.cget("text")
                 studio.voice.set("Perfil · Mi voz")
                 assert studio.musical_caption()
                 studio.voice.set("Automática")

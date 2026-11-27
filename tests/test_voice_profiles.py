@@ -96,3 +96,30 @@ class VoiceTests(unittest.TestCase):
             self.assertTrue((folder/"reference.wav").is_file())
             clip_reference(sample,root/"clip.wav",100)
             self.assertTrue((root/"clip.wav").is_file())
+
+    def test_mp3_reference_import(self):
+        try:
+            import miniaudio
+            import lameenc
+        except ImportError:
+            self.skipTest("audio codecs unavailable")
+        from noel.audio_export import export_audio
+        from noel.voice_profiles import import_audio,read_pcm
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            source=self.make_sample(root)
+            mp3=root/"sample.mp3"
+            export_audio(source,mp3,"mp3")
+            original=mp3.read_bytes()
+            duration=import_audio(mp3,root/"decoded.wav")
+            self.assertGreaterEqual(duration,5)
+            self.assertLess(duration,7)
+            self.assertEqual(read_pcm(root/"decoded.wav")[1:],(44100,2))
+            self.assertEqual(mp3.read_bytes(),original)
+    def test_draft_without_test_cannot_be_saved(self):
+        from noel.voice_profiles import commit_draft
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            p=create_profile(root/"draft",self.make_sample(root),"Borrador",True)
+            with self.assertRaisesRegex(ValueError,"prueba"):
+                commit_draft(root/"voices",root/"draft",p,"Demo")
